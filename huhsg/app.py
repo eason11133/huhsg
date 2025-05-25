@@ -26,24 +26,11 @@ def callback():
     body = request.get_data(as_text=True)
 
     try:
-        events = handler.parse(body, signature)
+        # 使用 handle 方法來處理 Webhook 事件
+        handler.handle(body, signature)
     except InvalidSignatureError:
         print("❌ Invalid signature")
         abort(400)  # 如果簽名無效，返回 400 錯誤
-
-    # 處理事件
-    for event in events:
-        if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
-            user_text = event.message.text
-            reply = "請輸入「廁所」來查詢附近廁所 🚻" if user_text != "廁所" else "請稍等，我幫你找最近的廁所 🧻"
-
-            try:
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text=reply)
-                )
-            except LineBotApiError as e:
-                print(f"❌ 回覆訊息失敗：{e}")
 
     return "OK"
 
