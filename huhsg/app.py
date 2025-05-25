@@ -52,10 +52,11 @@ def handle_message(event):
     except LineBotApiError as e:
         print(f"❌ 回覆訊息失敗：{e}")
         # 打印更詳細的錯誤信息
-        print(f"詳細錯誤: {e.response.status_code}, {e.response.text}")
+        print(f"詳細錯誤: {e.error.message}, {e.error.details}")  # 改為使用 message 和 details
 
 # 確保 Flask 應用監聽正確端口
 port = int(os.getenv("PORT", 10000))  # 使用 10000 作為預設端口
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port, debug=True)  # 設置 debug=True 以便於排查問題
+
 
