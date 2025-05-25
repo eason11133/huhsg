@@ -1,46 +1,60 @@
-from flask import Flask, jsonify, request, abort
+import os
 from flask import Flask, request, abort
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.v3.messaging import Configuration, MessagingApi, ReplyMessageRequest, TextMessage
+from linebot.v3.webhooks import WebhookParser, MessageEvent, TextMessageContent
+from linebot.v3.exceptions import InvalidSignatureError
 
-# 建立 Flask 應用
+# 本地開發用：自動載入 .env（部署時 Render 不會用到）
+from dotenv import load_dotenv
+load_dotenv()
+
+# 環境變數檢查
+if not os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or not os.getenv("LINE_CHANNEL_SECRET"):
+    raise RuntimeError("❌ LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數未設定")
+
 app = Flask(__name__)
 
-# 用你自己的 Channel Access Token 和 Channel Secret 替換下方內容
-line_bot_api = LineBotApi('6mNMYqtC//NR51MllA+n5nq6sV/g1mt+qHR86TnimUOC1R/YNyfS/W0rur6ezPyU+dBFN/O1319yU/y5xSWBSmS7FtPIB2J8ECo3IZWYedK0yo0di8iPxTb7iua4D3qDtLLBf+mM0IRZHS8BTcyhPAdB04t89/1O/w1cDnyilFU=')
-handler = WebhookHandler('59e6845917d74f19060b56592198e8c3')
+# 初始化 LINE Messaging API 與 WebhookParser
+configuration = Configuration(access_token=os.environ["LINE_CHANNEL_ACCESS_TOKEN"])
+messaging_api = MessagingApi(configuration=configuration)
+parser = WebhookParser(channel_secret=os.environ["LINE_CHANNEL_SECRET"])
 
-# 建立 callback 路由，LINE 會將訊息傳到這裡
+@app.route("/")
+def home():
+    return "✅ LINE Bot is running!"
+
 @app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers['X-Line-Signature']
+    signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
 
     try:
-        handler.handle(body, signature)
+        events = parser.parse(body, signature)
     except InvalidSignatureError:
         abort(400)
 
-    return 'OK'
+    for event in events:
+        if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
+            user_text = event.message.text
 
-# 訊息事件處理
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    user_text = event.message.text
+            if user_text == "廁所":
+                reply_text = "請稍等，我幫你找最近的廁所 🧻"
+            else:
+                reply_text = "請輸入「廁所」來查詢附近廁所 🚻"
 
-    # 根據使用者輸入回應內容
-    if user_text == "廁所":
-        reply = "請稍等，我幫你找最近的廁所 🧻"
-    else:
-        reply = "請輸入「廁所」來查詢附近廁所 🚻"
+            try:
+                messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=reply_text)]
+                    )
+                )
+            except Exception as e:
+                print(f"❌ 回覆訊息失敗：{e}")
 
-    # 回覆訊息
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
+    return "OK"
 
-# 啟動 Flask 應用
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
