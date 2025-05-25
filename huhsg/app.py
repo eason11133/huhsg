@@ -7,6 +7,7 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from dotenv import load_dotenv
 load_dotenv()
 
+# 確保環境變數已正確設定
 if not os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or not os.getenv("LINE_CHANNEL_SECRET"):
     raise RuntimeError("❌ LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數未設定")
 
@@ -27,8 +28,10 @@ def callback():
     try:
         events = handler.parse(body, signature)
     except InvalidSignatureError:
-        abort(400)
+        print("❌ Invalid signature")
+        abort(400)  # 如果簽名無效，返回 400 錯誤
 
+    # 處理事件
     for event in events:
         if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
             user_text = event.message.text
@@ -44,6 +47,9 @@ def callback():
 
     return "OK"
 
+# 確保 Flask 應用監聽正確端口
 port = int(os.getenv("PORT", 10000))
-app.run(host="0.0.0.0", port=port)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=port, debug=True)  # 設置 debug=True 以便於排查問題
+
 
