@@ -34,12 +34,28 @@ def callback():
 
     return "OK"
 
+# 設定 Webhook 事件處理函數
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_text = event.message.text
+    # 簡單回應邏輯，可以根據用戶輸入回應不同的訊息
+    if user_text == "廁所":
+        reply = "請稍等，我幫你找最近的廁所 🧻"
+    else:
+        reply = "請輸入「廁所」來查詢附近廁所 🚻"
+    
+    try:
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=reply)
+        )
+    except LineBotApiError as e:
+        print(f"❌ 回覆訊息失敗：{e}")
+        # 打印更詳細的錯誤信息
+        print(f"詳細錯誤: {e.response.status_code}, {e.response.text}")
+
 # 確保 Flask 應用監聽正確端口
 port = int(os.getenv("PORT", 10000))  # 使用 10000 作為預設端口
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port, debug=True)  # 設置 debug=True 以便於排查問題
-
-
-
-
 
