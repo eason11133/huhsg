@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
-from linebot.models import MessageEvent, TextMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -35,7 +35,10 @@ def callback():
             reply = "請輸入「廁所」來查詢附近廁所 🚻" if user_text != "廁所" else "請稍等，我幫你找最近的廁所 🧻"
 
             try:
-                line_bot_api.reply_message(event.reply_token, TextMessage(text=reply))
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text=reply)
+                )
             except LineBotApiError as e:
                 print(f"❌ 回覆訊息失敗：{e}")
 
@@ -44,4 +47,5 @@ def callback():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
 
