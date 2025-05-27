@@ -1,18 +1,17 @@
+import os
 import hmac
 import hashlib
-import os
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from dotenv import load_dotenv
 
-# 載入環境變數
-load_dotenv()
+load_dotenv()  # 載入.env檔案
 
 # 確保環境變數已正確設定
 if not os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or not os.getenv("LINE_CHANNEL_SECRET"):
-    raise RuntimeError("❌ LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數未設置")
+    raise ValueError("❌ LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數未設置")
 
 app = Flask(__name__)
 
@@ -33,9 +32,6 @@ def callback():
     calculated_signature = hmac.new(
         secret.encode(), body.encode(), hashlib.sha256
     ).hexdigest()
-
-    print(f"Calculated Signature: {calculated_signature}")  # 打印計算的簽名
-    print(f"Received Signature: {signature}")  # 打印收到的簽名
 
     # 比較簽名，若不相同則返回 400 錯誤
     if calculated_signature != signature:
@@ -64,7 +60,7 @@ def handle_message(event):
         reply_text = "请输入「廁所」来查询附近厕所 🚻"
 
     try:
-        # 回覆用戶訊息
+        # 回复用户消息
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=reply_text)
