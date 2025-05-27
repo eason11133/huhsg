@@ -33,6 +33,9 @@ def callback():
         secret.encode(), body.encode(), hashlib.sha256
     ).hexdigest()
 
+    print(f"Calculated Signature: {calculated_signature}")
+    print(f"Received Signature: {signature}")
+
     # 比較簽名，若不相同則返回 400 錯誤
     if calculated_signature != signature:
         print("❌ Invalid signature")
