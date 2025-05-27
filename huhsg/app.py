@@ -33,6 +33,7 @@ def callback():
         secret.encode(), body.encode(), hashlib.sha256
     ).hexdigest()
 
+    # 顯示計算的簽名與收到的簽名
     print(f"Calculated Signature: {calculated_signature}")
     print(f"Received Signature: {signature}")
 
@@ -48,7 +49,7 @@ def callback():
         print("❌ Invalid signature")
         abort(400)  # 如果簽名無效，返回 400 錯誤
     except LineBotApiError as e:
-        print(f"❌ LineBot API error: {e}")
+        print(f"❌ LineBot API error: {e.status_code}, {e.error.message}")
         abort(500)  # 其他錯誤，返回 500 錯誤
 
     return "OK"
