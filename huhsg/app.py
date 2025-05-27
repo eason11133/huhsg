@@ -33,7 +33,6 @@ def callback():
         secret.encode(), body.encode(), hashlib.sha256
     ).hexdigest()
 
-    # 顯示計算的簽名與收到的簽名
     print(f"Calculated Signature: {calculated_signature}")
     print(f"Received Signature: {signature}")
 
@@ -49,7 +48,7 @@ def callback():
         print("❌ Invalid signature")
         abort(400)  # 如果簽名無效，返回 400 錯誤
     except LineBotApiError as e:
-        print(f"❌ LineBot API error: {e.status_code}, {e.error.message}")
+        print(f"❌ LineBot API error: {e}")
         abort(500)  # 其他錯誤，返回 500 錯誤
 
     return "OK"
@@ -76,3 +75,4 @@ def handle_message(event):
 port = int(os.getenv("PORT", 10000))  # 使用 10000 作為預設端口
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port, debug=True)  # 設置 debug=True 以便於排查問題
+
