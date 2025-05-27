@@ -75,4 +75,3 @@ def handle_message(event):
 port = int(os.getenv("PORT", 10000))  # 使用 10000 作為預設端口
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port, debug=True)  # 設置 debug=True 以便於排查問題
-
