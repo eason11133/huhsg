@@ -5,9 +5,9 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from dotenv import load_dotenv
 
 # 載入環境變數
-from dotenv import load_dotenv
 load_dotenv()
 
 # 確保環境變數已正確設定
@@ -34,6 +34,9 @@ def callback():
         secret.encode(), body.encode(), hashlib.sha256
     ).hexdigest()
 
+    print(f"Calculated Signature: {calculated_signature}")  # 打印計算的簽名
+    print(f"Received Signature: {signature}")  # 打印收到的簽名
+
     # 比較簽名，若不相同則返回 400 錯誤
     if calculated_signature != signature:
         print("❌ Invalid signature")
@@ -51,18 +54,16 @@ def callback():
 
     return "OK"
 
-# 處理訊息的邏輯
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    try:
-        user_text = event.message.text
-        print(f"Received message: {user_text}")  # 輸出收到的訊息
-        
-        if user_text == "廁所":
-            reply_text = "请稍等，我帮你找最近的厕所 🧻"
-        else:
-            reply_text = "请输入「廁所」来查询附近厕所 🚻"
+    user_text = event.message.text
+    print(f"Received message: {user_text}")  # 輸出收到的訊息
+    if user_text == "廁所":
+        reply_text = "请稍等，我帮你找最近的厕所 🧻"
+    else:
+        reply_text = "请输入「廁所」来查询附近厕所 🚻"
 
+    try:
         # 回覆用戶訊息
         line_bot_api.reply_message(
             event.reply_token,
@@ -70,8 +71,6 @@ def handle_message(event):
         )
     except LineBotApiError as e:
         print(f"❌ Reply failed: {e}")
-    except Exception as e:
-        print(f"❌ An unexpected error occurred: {e}")
 
 # 確保 Flask 應用監聽正確端口
 port = int(os.getenv("PORT", 10000))  # 使用 10000 作為預設端口
