@@ -6,13 +6,11 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from dotenv import load_dotenv
-from waitress import serve
-import base64
 
 load_dotenv()
 
 if not os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or not os.getenv("LINE_CHANNEL_SECRET"):
-    raise ValueError("❌ 環境變數未設置")
+    raise ValueError("❌ LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數未設置")
 
 app = Flask(__name__)
 
@@ -29,11 +27,9 @@ def callback():
     body = request.get_data(as_text=True)
 
     secret = os.getenv("LINE_CHANNEL_SECRET")
-    expected_signature = base64.b64encode(
-        hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()
-    ).decode()
+    calculated_signature = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
 
-    if signature != expected_signature:
+    if calculated_signature != signature:
         print("❌ Invalid signature")
         abort(400)
 
@@ -65,10 +61,10 @@ def handle_message(event):
     except LineBotApiError as e:
         print(f"❌ Reply failed: {e}")
 
-port = int(os.getenv("PORT", 10000))
-
 if __name__ == "__main__":
-    serve(app, host="0.0.0.0", port=port)
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=True)
+
 
 
 
