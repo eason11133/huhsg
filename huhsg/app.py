@@ -33,9 +33,6 @@ def callback():
         secret.encode(), body.encode(), hashlib.sha256
     ).hexdigest()
 
-    print(f"Calculated Signature: {calculated_signature}")
-    print(f"Received Signature: {signature}")
-
     # 比較簽名，若不相同則返回 400 錯誤
     if calculated_signature != signature:
         print("❌ Invalid signature")
@@ -71,7 +68,8 @@ def handle_message(event):
     except LineBotApiError as e:
         print(f"❌ Reply failed: {e}")
 
-# 確保 Flask 應用監聽正確端口
-port = int(os.getenv("PORT", 10000))  # 使用 10000 作為預設端口
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=port, debug=True)  # 設置 debug=True 以便於排查問題
+    from waitress import serve
+    port = int(os.getenv("PORT", 10000))  # 使用 10000 作為預設端口
+    serve(app, host="0.0.0.0", port=port)
+
