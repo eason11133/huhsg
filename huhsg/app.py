@@ -1,6 +1,7 @@
 import os
 import hmac
 import hashlib
+import base64
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
@@ -26,8 +27,10 @@ def callback():
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
 
+    # 計算並比對簽名 (使用 base64 編碼)
     secret = os.getenv("LINE_CHANNEL_SECRET")
-    calculated_signature = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
+    hash = hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()
+    calculated_signature = base64.b64encode(hash).decode()
 
     if calculated_signature != signature:
         print("❌ Invalid signature")
@@ -64,8 +67,5 @@ def handle_message(event):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=True)
-
-
-
 
 
