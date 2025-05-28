@@ -7,12 +7,12 @@ from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from dotenv import load_dotenv
 from waitress import serve
+import base64
 
-load_dotenv()  # 載入.env檔案
+load_dotenv()
 
-# 確認環境變數存在
 if not os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or not os.getenv("LINE_CHANNEL_SECRET"):
-    raise ValueError("❌ LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數未設置")
+    raise ValueError("❌ 環境變數未設置")
 
 app = Flask(__name__)
 
@@ -29,10 +29,6 @@ def callback():
     body = request.get_data(as_text=True)
 
     secret = os.getenv("LINE_CHANNEL_SECRET")
-    calculated_signature = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
-
-    # 注意：LINE 傳過來的簽名是 base64 編碼，不是 hexdigest，要用 base64 比較
-    import base64
     expected_signature = base64.b64encode(
         hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()
     ).decode()
@@ -73,6 +69,7 @@ port = int(os.getenv("PORT", 10000))
 
 if __name__ == "__main__":
     serve(app, host="0.0.0.0", port=port)
+
 
 
 
