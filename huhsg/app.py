@@ -3,6 +3,7 @@ import hmac
 import hashlib
 import base64
 from math import radians, cos, sin, asin, sqrt
+import sqlite3
 import requests
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
@@ -22,18 +23,36 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 # 儲存用戶位置的字典
 user_locations = {}
 
+# 初始化資料庫
+def create_db():
+    conn = sqlite3.connect('toilets.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS toilets
+                 (name TEXT, type TEXT, latitude REAL, longitude REAL, address TEXT)''')
+    conn.commit()
+    conn.close()
+
+# 插入廁所資料
+def insert_toilet(name, type, latitude, longitude, address):
+    conn = sqlite3.connect('toilets.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO toilets (name, type, latitude, longitude, address) VALUES (?, ?, ?, ?, ?)", 
+              (name, type, latitude, longitude, address))
+    conn.commit()
+    conn.close()
+
+# 計算兩點之間的距離（使用 Haversine 公式）
 def haversine(lat1, lon1, lat2, lon2):
-    """計算兩點間的距離，返回公尺"""
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    c = 2 * asin(sqrt(a))
-    r = 6371000  # 地球半徑 (單位: 公尺)
-    return c * r  # 返回公尺
+    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+    c = 2*asin(sqrt(a))
+    r = 6371000  # 地球半徑（米）
+    return c * r
 
+# 從 Overpass API 取得附近廁所
 def get_nearest_toilets(lat, lon, radius=500):
-    """通過 Overpass API 獲取附近的廁所"""
     overpass_url = "https://overpass-api.de/api/interpreter"
     query = f"""
     [out:json];
@@ -47,6 +66,26 @@ def get_nearest_toilets(lat, lon, radius=500):
     response = requests.post(overpass_url, data=query)
     data = response.json()
     return data.get('elements', [])
+
+# 查詢最近廁所
+def get_nearest_toilet_from_db(lat, lon):
+    conn = sqlite3.connect('toilets.db')
+    c = conn.cursor()
+    c.execute("SELECT name, latitude, longitude FROM toilets")
+    toilets = c.fetchall()
+    conn.close()
+
+    nearest_toilet = None
+    min_distance = float('inf')
+
+    for toilet in toilets:
+        toilet_name, toilet_lat, toilet_lon = toilet
+        distance = haversine(lat, lon, toilet_lat, toilet_lon)
+        if distance < min_distance:
+            nearest_toilet = toilet_name
+            min_distance = distance
+
+    return nearest_toilet, min_distance
 
 @app.route("/")
 def home():
@@ -159,6 +198,6 @@ def handle_location_message(event):
         print(f"❌ 回覆錯誤：{e}")
 
 if __name__ == "__main__":
+    create_db()  # 初始化資料庫
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
