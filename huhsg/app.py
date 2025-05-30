@@ -2,86 +2,99 @@ import os
 import hmac
 import hashlib
 import base64
-from math import radians, cos, sin, asin, sqrt
-import requests
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, LocationMessage
+from linebot.models import (
+    MessageEvent, TextMessage, TextSendMessage,
+    LocationMessage
+)
 from dotenv import load_dotenv
+import requests
+from math import radians
 
+# 載入 .env 環境變數
 load_dotenv()
 
+# 驗證是否有設置 LINE Bot 環境變數
 if not os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or not os.getenv("LINE_CHANNEL_SECRET"):
     raise ValueError("❌ 請確認 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 已設置在環境變數中")
 
+# 用戶位置存儲
+user_locations = {}
+
+# Flask 設置
 app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
-
-# 儲存用戶位置的字典
-user_locations = {}
-
-def haversine(lat1, lon1, lat2, lon2):
-    # 計算兩點間距離（公里）
-    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
-    c = 2*asin(sqrt(a))
-    r = 6371  # 地球半徑(km)
-    return c * r
-
-def get_nearest_toilets(lat, lon, radius=500):
-    # 使用Overpass API取得附近radius公尺內廁所資料
-    overpass_url = "https://overpass-api.de/api/interpreter"
-    query = f"""
-    [out:json];
-    (
-      node["amenity"="toilets"](around:{radius},{lat},{lon});
-      way["amenity"="toilets"](around:{radius},{lat},{lon});
-      relation["amenity"="toilets"](around:{radius},{lat},{lon});
-    );
-    out center;
-    """
-    response = requests.post(overpass_url, data=query)
-    data = response.json()
-    return data.get('elements', [])
 
 @app.route("/")
 def home():
     return "✅ LINE Bot is running!"
 
-@app.route("/callback", methods=["POST"])
-def callback():
-    signature = request.headers.get("X-Line-Signature", "")
-    body = request.get_data(as_text=True)
+# Haversine 計算兩個經緯度之間的距離
+def haversine(lat1, lon1, lat2, lon2):
+    # 地球半徑（單位：公里）
+    R = 6371.0
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
 
-    secret = os.getenv("LINE_CHANNEL_SECRET")
-    hash = hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()
-    calculated_signature = base64.b64encode(hash).decode()
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
 
-    if calculated_signature != signature:
-        print("❌ Invalid signature")
-        abort(400)
+    a = (pow((pow((math.sin(dlat / 2)), 2) + math.cos(lat1) * math.cos(lat2) * pow(math.sin(dlon / 2), 2)), 1)))
 
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    distance = R * c  # 距離（單位：公里）
+    return distance
+
+# 設置 OpenStreetMap (Overpass API) 查找廁所
+def get_nearest_toilets(lat, lon):
+    url = 'http://overpass-api.de/api/interpreter'
+    query = f"""
+    [out:json];
+    node["amenity"="toilets"](around:10000,{lat},{lon});
+    out;
+    """
+    response = requests.get(url, params={'data': query})
+    data = response.json()
+    
+    toilets = []
+    for element in data['elements']:
+        toilet = {
+            'lat': element.get('lat'),
+            'lon': element.get('lon'),
+            'tags': element.get('tags', {})
+        }
+        toilets.append(toilet)
+    
+    return toilets
+
+# 處理位置訊息，並儲存用戶位置
+@handler.add(MessageEvent, message=LocationMessage)
+def handle_location_message(event):
+    user_id = event.source.user_id
+    lat = event.message.latitude
+    lon = event.message.longitude
+    user_locations[user_id] = (lat, lon)
+
+    reply_text = "已儲存您的位置，請傳送「廁所」來查找附近的廁所 🧻"
     try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        print("❌ Invalid signature")
-        abort(400)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=reply_text)
+        )
     except LineBotApiError as e:
-        print(f"❌ LineBot API error: {e}")
-        abort(500)
+        print(f"❌ 回覆錯誤：{e}")
 
-    return "OK"
-
+# 處理文字訊息
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_text = event.message.text.strip()
     user_id = event.source.user_id
 
     if "廁所" in user_text:
+        # 檢查用戶是否已經提供位置
         if user_id in user_locations:
             lat, lon = user_locations[user_id]
             toilets = get_nearest_toilets(lat, lon)
@@ -93,7 +106,6 @@ def handle_text_message(event):
                 min_distance = float('inf')
 
                 for toilet in toilets:
-                    # 有些可能是way或relation，用 center 作位置
                     if toilet.get('type') == 'node':
                         toilet_lat = toilet.get('lat')
                         toilet_lon = toilet.get('lon')
@@ -140,24 +152,7 @@ def handle_text_message(event):
     except LineBotApiError as e:
         print(f"❌ 回覆錯誤：{e}")
 
-@handler.add(MessageEvent, message=LocationMessage)
-def handle_location_message(event):
-    user_id = event.source.user_id
-    lat = event.message.latitude
-    lon = event.message.longitude
-
-    user_locations[user_id] = (lat, lon)  # 儲存用戶位置
-
-    reply_text = f"📍 位置已更新！您現在位於：\n緯度：{lat}\n經度：{lon}\n請輸入「廁所」查詢附近廁所。"
-
-    try:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=reply_text)
-        )
-    except LineBotApiError as e:
-        print(f"❌ 回覆錯誤：{e}")
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
