@@ -23,17 +23,17 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 user_locations = {}
 
 def haversine(lat1, lon1, lat2, lon2):
-    # 計算兩點間距離（公里）
+    """計算兩點間的距離，返回公尺"""
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
-    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
-    c = 2*asin(sqrt(a))
-    r = 6371  # 地球半徑(km)
-    return c * r
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    c = 2 * asin(sqrt(a))
+    r = 6371000  # 地球半徑 (單位: 公尺)
+    return c * r  # 返回公尺
 
 def get_nearest_toilets(lat, lon, radius=500):
-    # 使用Overpass API取得附近radius公尺內廁所資料
+    """通過 Overpass API 獲取附近的廁所"""
     overpass_url = "https://overpass-api.de/api/interpreter"
     query = f"""
     [out:json];
@@ -123,7 +123,7 @@ def handle_text_message(event):
 
                     reply_text = (f"🧻 最近的廁所是：\n名稱：{toilet_name}\n"
                                   f"位置：({toilet_lat}, {toilet_lon})\n"
-                                  f"距離：{min_distance:.2f} 公里\n"
+                                  f"距離：{min_distance:.2f} 公尺\n"
                                   f"點擊地圖導航: https://www.google.com/maps/search/?api=1&query={toilet_lat},{toilet_lon}")
                 else:
                     reply_text = "🚽 找不到適合的廁所。"
