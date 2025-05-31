@@ -8,7 +8,11 @@ import requests
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, LocationMessage
+from linebot.models import (
+    MessageEvent, TextMessage, TextSendMessage, LocationMessage,
+    FlexSendMessage, BubbleContainer, BoxComponent, TextComponent,
+    URIAction, ButtonComponent, ImageComponent, CarouselContainer
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,10 +24,8 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
-# 儲存用戶位置的字典
 user_locations = {}
 
-# 初始化資料庫
 def create_db():
     conn = sqlite3.connect('toilets.db')
     c = conn.cursor()
@@ -32,26 +34,23 @@ def create_db():
     conn.commit()
     conn.close()
 
-# 插入廁所資料
 def insert_toilet(name, type, latitude, longitude, address):
     conn = sqlite3.connect('toilets.db')
     c = conn.cursor()
-    c.execute("INSERT INTO toilets (name, type, latitude, longitude, address) VALUES (?, ?, ?, ?, ?)", 
+    c.execute("INSERT INTO toilets (name, type, latitude, longitude, address) VALUES (?, ?, ?, ?, ?)",
               (name, type, latitude, longitude, address))
     conn.commit()
     conn.close()
 
-# 計算兩點之間的距離（使用 Haversine 公式）
 def haversine(lat1, lon1, lat2, lon2):
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
     a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
     c = 2*asin(sqrt(a))
-    r = 6371000  # 地球半徑（米）
+    r = 6371000
     return c * r
 
-# 從 Overpass API 取得附近廁所
 def get_nearest_toilets(lat, lon, radius=500):
     overpass_url = "https://overpass-api.de/api/interpreter"
     query = f"""
@@ -66,26 +65,6 @@ def get_nearest_toilets(lat, lon, radius=500):
     response = requests.post(overpass_url, data=query)
     data = response.json()
     return data.get('elements', [])
-
-# 查詢最近廁所
-def get_nearest_toilet_from_db(lat, lon):
-    conn = sqlite3.connect('toilets.db')
-    c = conn.cursor()
-    c.execute("SELECT name, latitude, longitude FROM toilets")
-    toilets = c.fetchall()
-    conn.close()
-
-    nearest_toilet = None
-    min_distance = float('inf')
-
-    for toilet in toilets:
-        toilet_name, toilet_lat, toilet_lon = toilet
-        distance = haversine(lat, lon, toilet_lat, toilet_lon)
-        if distance < min_distance:
-            nearest_toilet = toilet_name
-            min_distance = distance
-
-    return nearest_toilet, min_distance
 
 @app.route("/")
 def home():
@@ -126,58 +105,75 @@ def handle_text_message(event):
             toilets = get_nearest_toilets(lat, lon)
 
             if not toilets:
-                reply_text = "🚽 很抱歉，未能找到附近的廁所。"
-            else:
-                nearest_toilet = None
-                min_distance = float('inf')
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="🚽 很抱歉，未能找到附近的廁所。")
+                )
+                return
 
-                for toilet in toilets:
-                    # 有些可能是way或relation，用 center 作位置
-                    if toilet.get('type') == 'node':
-                        toilet_lat = toilet.get('lat')
-                        toilet_lon = toilet.get('lon')
-                    else:
-                        center = toilet.get('center')
-                        if center:
-                            toilet_lat = center.get('lat')
-                            toilet_lon = center.get('lon')
-                        else:
-                            continue
-                    if toilet_lat is None or toilet_lon is None:
-                        continue
-                    distance = haversine(lat, lon, toilet_lat, toilet_lon)
-                    if distance < min_distance:
-                        nearest_toilet = toilet
-                        min_distance = distance
-
-                if nearest_toilet:
-                    toilet_name = nearest_toilet.get('tags', {}).get('name', '無名稱')
-                    # 位置取node或center
-                    if nearest_toilet.get('type') == 'node':
-                        toilet_lat = nearest_toilet['lat']
-                        toilet_lon = nearest_toilet['lon']
-                    else:
-                        toilet_lat = nearest_toilet.get('center', {}).get('lat')
-                        toilet_lon = nearest_toilet.get('center', {}).get('lon')
-
-                    reply_text = (f"🧻 最近的廁所是：\n名稱：{toilet_name}\n"
-                                  f"位置：({toilet_lat}, {toilet_lon})\n"
-                                  f"距離：{min_distance:.2f} 公尺\n"
-                                  f"點擊地圖導航: https://www.google.com/maps/search/?api=1&query={toilet_lat},{toilet_lon}")
+            toilet_bubbles = []
+            for toilet in toilets[:5]:  # 最多5間
+                if toilet.get('type') == 'node':
+                    toilet_lat = toilet.get('lat')
+                    toilet_lon = toilet.get('lon')
                 else:
-                    reply_text = "🚽 找不到適合的廁所。"
-        else:
-            reply_text = "請先傳送您目前的位置，讓我幫您找附近的廁所喔！"
-    else:
-        reply_text = "請輸入「廁所」來查詢附近廁所，或先傳送您目前的位置。"
+                    center = toilet.get('center')
+                    if center:
+                        toilet_lat = center.get('lat')
+                        toilet_lon = center.get('lon')
+                    else:
+                        continue
 
-    try:
+                if toilet_lat is None or toilet_lon is None:
+                    continue
+
+                distance = haversine(lat, lon, toilet_lat, toilet_lon)
+                toilet_name = toilet.get('tags', {}).get('name', '無名稱')
+                map_url = f"https://www.google.com/maps/search/?api=1&query={toilet_lat},{toilet_lon}"
+
+                bubble = BubbleContainer(
+                    header=BoxComponent(
+                        layout='vertical',
+                        contents=[TextComponent(text=toilet_name, weight='bold', size='md', wrap=True)]
+                    ),
+                    hero=ImageComponent(
+                        url="https://i.imgur.com/SqCh4Fj.png",
+                        size="full",
+                        aspectRatio="20:13",
+                        aspectMode="cover"
+                    ),
+                    body=BoxComponent(
+                        layout='vertical',
+                        contents=[TextComponent(text=f"距離約 {distance:.0f} 公尺", size="sm", color="#555555", wrap=True)]
+                    ),
+                    footer=BoxComponent(
+                        layout='vertical',
+                        spacing='sm',
+                        contents=[
+                            ButtonComponent(
+                                style='link',
+                                height='sm',
+                                action=URIAction(label='打開地圖導航', uri=map_url)
+                            )
+                        ]
+                    )
+                )
+                toilet_bubbles.append(bubble)
+
+            carousel = CarouselContainer(contents=toilet_bubbles)
+            flex_message = FlexSendMessage(alt_text="附近的廁所資訊", contents=carousel)
+
+            line_bot_api.reply_message(event.reply_token, flex_message)
+        else:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="📍 請先傳送您目前的位置，讓我幫您找附近的廁所！")
+            )
+    else:
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text=reply_text)
+            TextSendMessage(text="請輸入「廁所」來查詢附近廁所，或先傳送您目前的位置。")
         )
-    except LineBotApiError as e:
-        print(f"❌ 回覆錯誤：{e}")
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
@@ -185,7 +181,7 @@ def handle_location_message(event):
     lat = event.message.latitude
     lon = event.message.longitude
 
-    user_locations[user_id] = (lat, lon)  # 儲存用戶位置
+    user_locations[user_id] = (lat, lon)
 
     reply_text = f"📍 位置已更新！您現在位於：\n緯度：{lat}\n經度：{lon}\n請輸入「廁所」查詢附近廁所。"
 
@@ -198,6 +194,6 @@ def handle_location_message(event):
         print(f"❌ 回覆錯誤：{e}")
 
 if __name__ == "__main__":
-    create_db()  # 初始化資料庫
+    create_db()
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
