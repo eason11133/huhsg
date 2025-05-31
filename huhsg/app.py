@@ -19,7 +19,6 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
 user_locations = {}
 
-# 計算兩點距離（公尺）
 def haversine(lat1, lon1, lat2, lon2):
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
@@ -29,43 +28,28 @@ def haversine(lat1, lon1, lat2, lon2):
     r = 6371000
     return c * r
 
-# 查詢本地 SQLite 廁所資料
-def query_local_toilets(lat, lon, radius=1000):
+def query_local_toilets(lat, lon, radius=500):
     print("查詢本地資料庫...")
     conn = sqlite3.connect("toilets.db")
     cursor = conn.cursor()
+    cursor.execute("SELECT name, type, latitude, longitude, address FROM toilets")
+    toilets = []
+    for row in cursor.fetchall():
+        name, type_, t_lat, t_lon, address = row
+        distance = haversine(lat, lon, t_lat, t_lon)
+        if distance <= radius:
+            toilets.append({
+                "name": name or "無名稱",
+                "type": "local",
+                "lat": t_lat,
+                "lon": t_lon,
+                "address": address or "",
+                "distance": distance
+            })
+    conn.close()
+    print(f"找到 {len(toilets)} 筆本地資料")
+    return sorted(toilets, key=lambda x: x["distance"])
 
-    try:
-        cursor.execute("SELECT 設施名稱, 類別, 緯度, 經度, 位置 FROM toilets")
-        toilets = []
-        for row in cursor.fetchall():
-            name, type_, t_lat, t_lon, address = row
-            if not t_lat or not t_lon:
-                continue
-            try:
-                t_lat = float(t_lat)
-                t_lon = float(t_lon)
-            except ValueError:
-                continue
-            distance = haversine(lat, lon, t_lat, t_lon)
-            if distance <= radius:
-                toilets.append({
-                    "name": name or "無名稱",
-                    "type": "local",
-                    "lat": t_lat,
-                    "lon": t_lon,
-                    "address": address or "",
-                    "distance": distance
-                })
-        print(f"找到 {len(toilets)} 筆本地資料")
-        return sorted(toilets, key=lambda x: x["distance"])
-    except Exception as e:
-        print("資料庫查詢錯誤：", e)
-        return []
-    finally:
-        conn.close()
-
-# 查詢 Overpass API
 def query_overpass_toilets(lat, lon, radius=1000):
     print("查詢 Overpass API...")
     overpass_url = "https://overpass-api.de/api/interpreter"
@@ -126,7 +110,6 @@ def callback():
 
     return "OK"
 
-# 處理文字訊息
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_text = event.message.text.strip()
@@ -134,16 +117,48 @@ def handle_text_message(event):
 
     if "廁所" in user_text:
         if user_id not in user_locations:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送您目前的位置，讓我幫您找附近的廁所喔！"))
+            flex = {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": "請傳送你的位置", "weight": "bold", "size": "lg"},
+                        {"type": "text", "text": "以便查詢附近的廁所", "size": "sm", "color": "#555555", "margin": "md"}
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "spacing": "md",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "action": {
+                                "type": "location",
+                                "label": "📍 傳送位置"
+                            }
+                        },
+                        {
+                            "type": "button",
+                            "style": "secondary",
+                            "action": {
+                                "type": "message",
+                                "label": "🚽 查詢廁所",
+                                "text": "廁所"
+                            }
+                        }
+                    ]
+                }
+            }
+            line_bot_api.reply_message(event.reply_token, FlexSendMessage("傳送位置以查詢廁所", contents=flex))
             return
 
         lat, lon = user_locations[user_id]
         print(f"使用者查詢廁所：{lat}, {lon}")
 
-        # 查本地資料庫
         toilets = query_local_toilets(lat, lon)
-
-        # 若本地沒有，查 OSM
         if not toilets:
             toilets = query_overpass_toilets(lat, lon)
 
@@ -207,7 +222,6 @@ def handle_text_message(event):
             TextSendMessage(text="請輸入「廁所」來查詢附近廁所，或先傳送您目前的位置。")
         )
 
-# 處理位置訊息
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
     user_id = event.source.user_id
@@ -217,7 +231,6 @@ def handle_location_message(event):
     reply = f"📍 位置已更新！\n緯度：{lat}\n經度：{lon}\n請輸入「廁所」查詢附近的廁所。"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
-# 啟動伺服器
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
