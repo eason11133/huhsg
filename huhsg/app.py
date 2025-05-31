@@ -8,7 +8,11 @@ import requests
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, LocationMessage, FlexSendMessage
+from linebot.models import (
+    MessageEvent, TextMessage, TextSendMessage, LocationMessage,
+    FlexSendMessage, BubbleContainer, BoxComponent, ImageComponent,
+    TextComponent, ButtonComponent, MessageAction, LocationAction
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,30 +32,39 @@ def haversine(lat1, lon1, lat2, lon2):
     r = 6371000
     return c * r
 
-def query_local_toilets(lat, lon, radius=500):
-    print("查詢本地資料庫...")
+def query_local_toilets(lat, lon, radius=1000):
     conn = sqlite3.connect("toilets.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT name, type, latitude, longitude, address FROM toilets")
-    toilets = []
-    for row in cursor.fetchall():
-        name, type_, t_lat, t_lon, address = row
-        distance = haversine(lat, lon, t_lat, t_lon)
-        if distance <= radius:
-            toilets.append({
-                "name": name or "無名稱",
-                "type": "local",
-                "lat": t_lat,
-                "lon": t_lon,
-                "address": address or "",
-                "distance": distance
-            })
-    conn.close()
-    print(f"找到 {len(toilets)} 筆本地資料")
-    return sorted(toilets, key=lambda x: x["distance"])
+    try:
+        cursor.execute("SELECT 設施名稱, 類別, 緯度, 經度, 位置 FROM toilets")
+        toilets = []
+        for row in cursor.fetchall():
+            name, type_, t_lat, t_lon, address = row
+            if not t_lat or not t_lon:
+                continue
+            try:
+                t_lat = float(t_lat)
+                t_lon = float(t_lon)
+            except ValueError:
+                continue
+            distance = haversine(lat, lon, t_lat, t_lon)
+            if distance <= radius:
+                toilets.append({
+                    "name": name or "無名稱",
+                    "type": "local",
+                    "lat": t_lat,
+                    "lon": t_lon,
+                    "address": address or "",
+                    "distance": distance
+                })
+        return sorted(toilets, key=lambda x: x["distance"])
+    except Exception as e:
+        print("資料庫查詢錯誤：", e)
+        return []
+    finally:
+        conn.close()
 
 def query_overpass_toilets(lat, lon, radius=1000):
-    print("查詢 Overpass API...")
     overpass_url = "https://overpass-api.de/api/interpreter"
     query = f"""
     [out:json];
@@ -86,9 +99,54 @@ def query_overpass_toilets(lat, lon, radius=1000):
             "lon": t_lon,
             "distance": distance
         })
-
-    print(f"Overpass 找到 {len(toilets)} 筆資料")
     return sorted(toilets, key=lambda x: x["distance"])
+
+def send_flex_buttons(reply_token):
+    flex_content = BubbleContainer(
+        hero=ImageComponent(
+            url="https://i.imgur.com/RStA3pp.png",
+            size="full",
+            aspectMode="cover",
+            aspectRatio="1.51:1"
+        ),
+        body=BoxComponent(
+            layout="vertical",
+            spacing="md",
+            contents=[
+                TextComponent(text="🚽 廁所小幫手", weight="bold", size="lg"),
+                BoxComponent(
+                    layout="horizontal",
+                    spacing="md",
+                    contents=[
+                        ButtonComponent(
+                            action=LocationAction(label="傳送位置"),
+                            style="secondary",
+                            height="sm",
+                            color="#A7D6FF",
+                            flex=1
+                        ),
+                        ButtonComponent(
+                            action=MessageAction(label="查附近廁所", text="廁所"),
+                            style="primary",
+                            height="sm",
+                            color="#55C9A6",
+                            flex=1
+                        )
+                    ]
+                )
+            ]
+        )
+    )
+
+    message = FlexSendMessage(
+        alt_text="請傳送您目前的位置或查詢附近廁所",
+        contents=flex_content
+    )
+
+    try:
+        line_bot_api.reply_message(reply_token, message)
+    except LineBotApiError as e:
+        print(f"❌ 發送 Flex Message 錯誤：{e}")
 
 @app.route("/")
 def home():
@@ -112,52 +170,19 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
-    user_text = event.message.text.strip()
+    user_text = event.message.text.strip().lower()
     user_id = event.source.user_id
+
+    if user_text in ["開始", "menu", "start", "選單"]:
+        send_flex_buttons(event.reply_token)
+        return
 
     if "廁所" in user_text:
         if user_id not in user_locations:
-            flex = {
-                "type": "bubble",
-                "body": {
-                    "type": "box",
-                    "layout": "vertical",
-                    "contents": [
-                        {"type": "text", "text": "請傳送你的位置", "weight": "bold", "size": "lg"},
-                        {"type": "text", "text": "以便查詢附近的廁所", "size": "sm", "color": "#555555", "margin": "md"}
-                    ]
-                },
-                "footer": {
-                    "type": "box",
-                    "layout": "horizontal",
-                    "spacing": "md",
-                    "contents": [
-                        {
-                            "type": "button",
-                            "style": "primary",
-                            "action": {
-                                "type": "location",
-                                "label": "📍 傳送位置"
-                            }
-                        },
-                        {
-                            "type": "button",
-                            "style": "secondary",
-                            "action": {
-                                "type": "message",
-                                "label": "🚽 查詢廁所",
-                                "text": "廁所"
-                            }
-                        }
-                    ]
-                }
-            }
-            line_bot_api.reply_message(event.reply_token, FlexSendMessage("傳送位置以查詢廁所", contents=flex))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送您目前的位置，讓我幫您找附近的廁所喔！"))
             return
 
         lat, lon = user_locations[user_id]
-        print(f"使用者查詢廁所：{lat}, {lon}")
-
         toilets = query_local_toilets(lat, lon)
         if not toilets:
             toilets = query_overpass_toilets(lat, lon)
@@ -167,12 +192,9 @@ def handle_text_message(event):
             return
 
         toilet = toilets[0]
-        toilet_name = toilet["name"]
-        toilet_lat = toilet["lat"]
-        toilet_lon = toilet["lon"]
-        distance_str = f"{toilet['distance']:.2f} 公尺"
-        map_url = f"https://www.google.com/maps/search/?api=1&query={toilet_lat},{toilet_lon}"
+        map_url = f"https://www.google.com/maps/search/?api=1&query={toilet['lat']},{toilet['lon']}"
         source = "本地資料庫" if toilet["type"] == "local" else "OpenStreetMap"
+        distance_str = f"{toilet['distance']:.2f} 公尺"
 
         flex_message = {
             "type": "bubble",
@@ -187,7 +209,7 @@ def handle_text_message(event):
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
-                    {"type": "text", "text": toilet_name, "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": toilet["name"], "weight": "bold", "size": "lg"},
                     {"type": "text", "text": f"距離你 {distance_str}", "size": "sm", "color": "#666666", "margin": "md"},
                     {"type": "text", "text": f"來源：{source}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
                 ]
@@ -215,19 +237,15 @@ def handle_text_message(event):
             event.reply_token,
             FlexSendMessage(alt_text="最近的廁所資訊", contents=flex_message)
         )
-
     else:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="請輸入「廁所」來查詢附近廁所，或先傳送您目前的位置。")
-        )
+        reply_text = "請輸入「廁所」或傳送位置來查詢附近廁所 🗺️"
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
     user_id = event.source.user_id
     lat, lon = event.message.latitude, event.message.longitude
     user_locations[user_id] = (lat, lon)
-    print(f"✅ 使用者位置已更新：{lat}, {lon}")
     reply = f"📍 位置已更新！\n緯度：{lat}\n經度：{lon}\n請輸入「廁所」查詢附近的廁所。"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
