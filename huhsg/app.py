@@ -1,4 +1,4 @@
-import os
+import os 
 import hmac
 import hashlib
 import base64
@@ -9,9 +9,8 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, LocationMessage,
-    FlexSendMessage, BubbleContainer, BoxComponent, TextComponent,
-    URIAction, ButtonComponent, ImageComponent, CarouselContainer
+    MessageEvent, TextMessage, TextSendMessage,
+    LocationMessage, FlexSendMessage
 )
 from dotenv import load_dotenv
 
@@ -34,21 +33,13 @@ def create_db():
     conn.commit()
     conn.close()
 
-def insert_toilet(name, type, latitude, longitude, address):
-    conn = sqlite3.connect('toilets.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO toilets (name, type, latitude, longitude, address) VALUES (?, ?, ?, ?, ?)",
-              (name, type, latitude, longitude, address))
-    conn.commit()
-    conn.close()
-
 def haversine(lat1, lon1, lat2, lon2):
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
     a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
     c = 2*asin(sqrt(a))
-    r = 6371000
+    r = 6371000  # 地球半徑（公尺）
     return c * r
 
 def get_nearest_toilets(lat, lon, radius=500):
@@ -105,14 +96,16 @@ def handle_text_message(event):
             toilets = get_nearest_toilets(lat, lon)
 
             if not toilets:
+                reply_text = "🚽 很抱歉，未能找到附近的廁所。"
                 line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="🚽 很抱歉，未能找到附近的廁所。")
+                    event.reply_token, TextSendMessage(text=reply_text)
                 )
                 return
 
-            toilet_bubbles = []
-            for toilet in toilets[:5]:  # 最多5間
+            nearest_toilet = None
+            min_distance = float('inf')
+
+            for toilet in toilets:
                 if toilet.get('type') == 'node':
                     toilet_lat = toilet.get('lat')
                     toilet_lon = toilet.get('lon')
@@ -123,51 +116,87 @@ def handle_text_message(event):
                         toilet_lon = center.get('lon')
                     else:
                         continue
-
                 if toilet_lat is None or toilet_lon is None:
                     continue
-
                 distance = haversine(lat, lon, toilet_lat, toilet_lon)
-                toilet_name = toilet.get('tags', {}).get('name', '無名稱')
+                if distance < min_distance:
+                    nearest_toilet = toilet
+                    min_distance = distance
+
+            if nearest_toilet:
+                toilet_name = nearest_toilet.get('tags', {}).get('name', '無名稱')
+                if nearest_toilet.get('type') == 'node':
+                    toilet_lat = nearest_toilet['lat']
+                    toilet_lon = nearest_toilet['lon']
+                else:
+                    toilet_lat = nearest_toilet.get('center', {}).get('lat')
+                    toilet_lon = nearest_toilet.get('center', {}).get('lon')
+
+                distance_str = f"{min_distance:.2f} 公尺"
                 map_url = f"https://www.google.com/maps/search/?api=1&query={toilet_lat},{toilet_lon}"
 
-                bubble = BubbleContainer(
-                    header=BoxComponent(
-                        layout='vertical',
-                        contents=[TextComponent(text=toilet_name, weight='bold', size='md', wrap=True)]
-                    ),
-                    hero=ImageComponent(
-                        url="https://i.imgur.com/SqCh4Fj.png",
-                        size="full",
-                        aspectRatio="20:13",
-                        aspectMode="cover"
-                    ),
-                    body=BoxComponent(
-                        layout='vertical',
-                        contents=[TextComponent(text=f"距離約 {distance:.0f} 公尺", size="sm", color="#555555", wrap=True)]
-                    ),
-                    footer=BoxComponent(
-                        layout='vertical',
-                        spacing='sm',
-                        contents=[
-                            ButtonComponent(
-                                style='link',
-                                height='sm',
-                                action=URIAction(label='打開地圖導航', uri=map_url)
-                            )
+                flex_message = {
+                    "type": "bubble",
+                    "hero": {
+                        "type": "image",
+                        "url": "https://i.imgur.com/BRO9ZQw.png",
+                        "size": "full",
+                        "aspectRatio": "20:13",
+                        "aspectMode": "cover"
+                    },
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": toilet_name,
+                                "weight": "bold",
+                                "size": "lg",
+                                "wrap": True
+                            },
+                            {
+                                "type": "text",
+                                "text": f"距離你 {distance_str}",
+                                "size": "sm",
+                                "color": "#666666",
+                                "margin": "md"
+                            }
                         ]
-                    )
+                    },
+                    "footer": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "button",
+                                "style": "link",
+                                "height": "sm",
+                                "action": {
+                                    "type": "uri",
+                                    "label": "🗺 開啟地圖導航",
+                                    "uri": map_url
+                                }
+                            }
+                        ],
+                        "flex": 0
+                    }
+                }
+
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    FlexSendMessage(alt_text="最近的廁所資訊", contents=flex_message)
                 )
-                toilet_bubbles.append(bubble)
-
-            carousel = CarouselContainer(contents=toilet_bubbles)
-            flex_message = FlexSendMessage(alt_text="附近的廁所資訊", contents=carousel)
-
-            line_bot_api.reply_message(event.reply_token, flex_message)
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="🚽 找不到適合的廁所。")
+                )
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="📍 請先傳送您目前的位置，讓我幫您找附近的廁所！")
+                TextSendMessage(text="請先傳送您目前的位置，讓我幫您找附近的廁所喔！")
             )
     else:
         line_bot_api.reply_message(
@@ -184,14 +213,10 @@ def handle_location_message(event):
     user_locations[user_id] = (lat, lon)
 
     reply_text = f"📍 位置已更新！您現在位於：\n緯度：{lat}\n經度：{lon}\n請輸入「廁所」查詢附近廁所。"
-
-    try:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=reply_text)
-        )
-    except LineBotApiError as e:
-        print(f"❌ 回覆錯誤：{e}")
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
 
 if __name__ == "__main__":
     create_db()
