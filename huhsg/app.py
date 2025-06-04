@@ -174,6 +174,10 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
     return {"type": "carousel", "contents": bubbles}
 
+@app.route("/")
+def home():
+    return "服務已啟動！"
+
 @app.route("/callback", methods=["POST"])
 def callback():
     signature = request.headers.get("X-Line-Signature")
