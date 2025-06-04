@@ -8,7 +8,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
-    FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction
+    FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction, URIAction
 )
 
 # Load environment variables
@@ -142,6 +142,18 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
+        # 按鈕 - 導航到最近廁所
+        navigation_button = {
+            "type": "button",
+            "style": "primary",
+            "color": "#00BFFF",
+            "action": URIAction(
+                label="導航至最近廁所",
+                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # 導航到指定經緯度
+            )
+        }
+        
+        # 按鈕 - 加入最愛或刪除最愛
         action_button = {
             "type": "button",
             "style": "primary",
@@ -152,11 +164,14 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                 "data": f"{'remove' if show_delete else 'add'}:{t['name']}"
             }
         }
+
+        # 使用地圖作為圖片
+        map_url = f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
         bubble = {
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": "https://i.imgur.com/BRO9ZQw.png",
+                "url": map_url,
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
@@ -174,12 +189,13 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "contents": [action_button],
+                "contents": [navigation_button, action_button],  # 包括導航按鈕和加入/刪除最愛按鈕
                 "spacing": "sm",
                 "flex": 0
             }
         }
         bubbles.append(bubble)
+
     return {"type": "carousel", "contents": bubbles}
 
 @app.route("/")
