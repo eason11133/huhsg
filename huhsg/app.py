@@ -193,7 +193,7 @@ def handle_text(event):
     text = event.message.text.lower()
     uid = event.source.user_id
 
-    if text == "廁所":
+    if text == "附近廁所":
         if uid not in user_locations:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
@@ -235,7 +235,7 @@ def handle_location(event):
     uid = event.source.user_id
     lat, lon = event.message.latitude, event.message.longitude
     user_locations[uid] = (lat, lon)
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 位置已更新，輸入 '廁所' 查詢"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 位置已更新，點 '附近廁所' 查詢"))
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 10000))
