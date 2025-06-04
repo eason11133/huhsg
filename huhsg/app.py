@@ -14,6 +14,7 @@ from linebot.models import (
 # Load environment variables
 load_dotenv()
 
+# Initialize Flask and LINE API
 app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
@@ -22,38 +23,115 @@ user_locations = {}
 last_toilet_by_user = {}
 MAX_TOILETS_REPLY = 5
 
+# Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Function to read data from toilets.txt
-def read_toilets_data():
-    toilets = []
-    try:
-        with open('toilets.txt', 'r', encoding='utf-8') as file:
-            for line in file.readlines():
-                # Assuming CSV format: name, type, latitude, longitude, address
-                parts = line.strip().split(',')
-                if len(parts) == 5:
-                    name, type_, lat, lon, addr = parts
-                    toilets.append({
-                        "name": name,
-                        "type": type_,
-                        "lat": float(lat),
-                        "lon": float(lon),
-                        "address": addr
-                    })
-    except FileNotFoundError:
-        logging.error("toilets.txt not found")
-    return toilets
-
-# Function to calculate the distance between two points using Haversine formula
+# Calculate the distance using the Haversine formula
 def haversine(lat1, lon1, lat2, lon2):
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
+    dlat, dlon = lat2 - lat1, lon2 - lon1
     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
     return 2 * asin(sqrt(a)) * 6371000
 
-# Create the Flex message format for displaying toilets
+# Read toilets from text file
+def query_local_toilets(lat, lon):
+    toilets = []
+    try:
+        with open('toilets.txt', 'r', encoding='utf-8') as file:
+            for line in file:
+                # Assumes format: name, category, lat, lon, address
+                data = line.strip().split(',')
+                if len(data) != 5:
+                    continue  # Skip lines with incorrect format
+
+                name, category, t_lat, t_lon, address = data
+                try:
+                    t_lat, t_lon = float(t_lat), float(t_lon)
+                except ValueError:
+                    continue  # Skip invalid lat/lon
+                dist = haversine(lat, lon, t_lat, t_lon)
+                toilets.append({"name": name or "無名稱", "lat": t_lat, "lon": t_lon,
+                                "address": address or "", "distance": dist, "type": "local"})
+    except FileNotFoundError:
+        logging.error("toilets.txt not found.")
+        return []
+
+    return sorted(toilets, key=lambda x: x['distance'])
+
+# Query OpenStreetMap for nearby toilets
+def query_overpass_toilets(lat, lon, radius=1000):
+    url = "https://overpass-api.de/api/interpreter"
+    query = f"""
+    [out:json];
+    (
+      node["amenity"="toilets"](around:{radius},{lat},{lon});
+      way["amenity"="toilets"](around:{radius},{lat},{lon});
+      relation["amenity"="toilets"](around:{radius},{lat},{lon});
+    );
+    out center;
+    """
+    try:
+        resp = requests.post(url, data=query, headers={"User-Agent": "LineBotToiletFinder/1.0"}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logging.error(f"Overpass API 查詢失敗：{e}")
+        return []
+
+    toilets = []
+    for elem in data.get("elements", []):
+        if elem["type"] == "node":
+            t_lat, t_lon = elem["lat"], elem["lon"]
+        elif "center" in elem:
+            t_lat, t_lon = elem["center"]["lat"], elem["center"]["lon"]
+        else:
+            continue
+        dist = haversine(lat, lon, t_lat, t_lon)
+        name = elem.get("tags", {}).get("name", "無名稱")
+        toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": "osm"})
+    toilets.sort(key=lambda x: x["distance"])
+    return toilets
+
+# Add toilet to favorites
+def add_to_favorites(user_id, toilet):
+    with open("favorites.txt", "a", encoding="utf-8") as file:
+        file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
+
+# Remove toilet from favorites
+def remove_from_favorites(user_id, name):
+    try:
+        with open("favorites.txt", "r", encoding="utf-8") as file:
+            lines = file.readlines()
+        with open("favorites.txt", "w", encoding="utf-8") as file:
+            for line in lines:
+                if not line.startswith(f"{user_id},{name},"):
+                    file.write(line)
+        return True
+    except Exception as e:
+        logging.error(f"Error removing favorite: {e}")
+        return False
+
+# Get user's favorites from file
+def get_user_favorites(user_id):
+    favorites = []
+    try:
+        with open("favorites.txt", "r", encoding="utf-8") as file:
+            for line in file:
+                data = line.strip().split(',')
+                if data[0] == user_id:
+                    favorites.append({
+                        "name": data[1],
+                        "lat": float(data[2]),
+                        "lon": float(data[3]),
+                        "address": data[4],
+                        "type": "favorite",
+                        "distance": 0
+                    })
+    except FileNotFoundError:
+        logging.error("favorites.txt not found.")
+    return favorites
+
+# Create flex message to display toilets
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
@@ -116,12 +194,11 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
         lat, lon = user_locations[uid]
-        toilets = read_toilets_data()
-        # You may use haversine to filter toilets based on distance from the user
-        for toilet in toilets:
-            toilet['distance'] = haversine(lat, lon, toilet['lat'], toilet['lon'])
-        last_toilet_by_user[uid] = toilets[0] if toilets else None
-        msg = create_toilet_flex_messages(toilets)
+        local_toilets = query_local_toilets(lat, lon)
+        osm_toilets = query_overpass_toilets(lat, lon)
+        all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
+        last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
+        msg = create_toilet_flex_messages(all_toilets)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
     elif text == "我的最愛":
