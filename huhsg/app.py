@@ -160,7 +160,8 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                 "contents": [
                     {"type": "text", "text": t['name'], "weight": "bold", "size": "lg"},
                     {"type": "text", "text": f"距離：{t['distance']:.1f} 公尺" if t['distance'] else "", "size": "sm", "color": "#555555", "margin": "md"},
-                    {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"}
+                    {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"},
+                    {"type": "text", "text": f"來源：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
                 ]
             },
             "footer": {
