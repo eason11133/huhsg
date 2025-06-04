@@ -142,6 +142,9 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
+        # 使用 OpenStreetMap 顯示地圖（Leaflet API 或其他方式）
+        map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
+
         # 按鈕 - 導航到最近廁所
         navigation_button = {
             "type": "button",
@@ -152,7 +155,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                 uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # 導航到指定經緯度
             )
         }
-        
+
         # 按鈕 - 加入最愛或刪除最愛
         action_button = {
             "type": "button",
@@ -165,13 +168,11 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             }
         }
 
-        # 使用地圖作為圖片
-        map_url = f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
         bubble = {
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,
+                "url": map_url,  # 使用 OSM 地圖的 URL
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
