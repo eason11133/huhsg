@@ -14,6 +14,12 @@ from linebot.models import (
 # Load environment variables
 load_dotenv()
 
+# Ensure favorites file exists
+def ensure_favorites_file():
+    if not os.path.exists("favorites.txt"):
+        with open("favorites.txt", "w", encoding="utf-8") as f:
+            pass  # Create an empty file if it doesn't exist
+
 # Initialize Flask and LINE API
 app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
@@ -25,6 +31,9 @@ MAX_TOILETS_REPLY = 5
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Ensure the favorites.txt file exists at the start
+ensure_favorites_file()
 
 # Calculate the distance using the Haversine formula
 def haversine(lat1, lon1, lat2, lon2):
@@ -39,16 +48,14 @@ def query_local_toilets(lat, lon):
     try:
         with open('toilets.txt', 'r', encoding='utf-8') as file:
             for line in file:
-                # Assumes format: name, category, lat, lon, address
                 data = line.strip().split(',')
                 if len(data) != 5:
-                    continue  # Skip lines with incorrect format
-
+                    continue
                 name, category, t_lat, t_lon, address = data
                 try:
                     t_lat, t_lon = float(t_lat), float(t_lon)
                 except ValueError:
-                    continue  # Skip invalid lat/lon
+                    continue
                 dist = haversine(lat, lon, t_lat, t_lon)
                 toilets.append({"name": name or "無名稱", "lat": t_lat, "lon": t_lon,
                                 "address": address or "", "distance": dist, "type": "local"})
