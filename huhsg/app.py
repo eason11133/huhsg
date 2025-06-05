@@ -2,6 +2,7 @@ import os
 import logging
 from math import radians, cos, sin, asin, sqrt
 import requests
+import sqlite3
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
@@ -13,12 +14,6 @@ from linebot.models import (
 
 # Load environment variables
 load_dotenv()
-
-# Ensure favorites file exists
-def ensure_favorites_file():
-    if not os.path.exists("favorites.txt"):
-        with open("favorites.txt", "w", encoding="utf-8") as f:
-            pass  # Create an empty file if it doesn't exist
 
 # Initialize Flask and LINE API
 app = Flask(__name__)
@@ -32,8 +27,28 @@ MAX_TOILETS_REPLY = 5
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Ensure the favorites.txt file exists at the start
-ensure_favorites_file()
+# SQLite Database setup
+def create_db():
+    conn = sqlite3.connect('toilets.db')  # Create or connect to SQLite database
+    c = conn.cursor()
+
+    # Create table for storing favorites
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS favorites (
+        user_id TEXT,
+        toilet_name TEXT,
+        latitude REAL,
+        longitude REAL,
+        address TEXT,
+        PRIMARY KEY (user_id, toilet_name)  -- Ensures no duplicate favorite per user
+    )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+# Ensure the database exists
+create_db()
 
 # Calculate the distance using the Haversine formula
 def haversine(lat1, lon1, lat2, lon2):
@@ -47,13 +62,11 @@ def query_local_toilets(lat, lon):
     toilets = []
     try:
         with open('toilets.txt', 'r', encoding='utf-8') as file:
-            # Skip header
-            next(file)
+            next(file)  # Skip header
             for line in file:
                 data = line.strip().split(',')
                 if len(data) != 13:
                     continue
-                # Extract relevant data
                 country, city, village, number, name, address, admin, latitude, longitude, grade, type2, type_, exec_, diaper = data
                 try:
                     t_lat, t_lon = float(latitude), float(longitude)
@@ -108,64 +121,74 @@ def query_overpass_toilets(lat, lon, radius=1000):
     toilets.sort(key=lambda x: x["distance"])
     return toilets
 
-# Add toilet to favorites
+# Add toilet to favorites (SQLite version)
 def add_to_favorites(user_id, toilet):
-    with open("favorites.txt", "a", encoding="utf-8") as file:
-        file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
+    conn = sqlite3.connect('toilets.db')
+    c = conn.cursor()
 
-# Remove toilet from favorites
+    # Insert or replace the favorite toilet
+    c.execute('''
+    INSERT OR REPLACE INTO favorites (user_id, toilet_name, latitude, longitude, address)
+    VALUES (?, ?, ?, ?, ?)
+    ''', (user_id, toilet['name'], toilet['lat'], toilet['lon'], toilet['address']))
+
+    conn.commit()
+    conn.close()
+
+    logging.info(f"Added {toilet['name']} to favorites for user {user_id}")
+
+# Remove toilet from favorites (SQLite version)
 def remove_from_favorites(user_id, name):
-    try:
-        with open("favorites.txt", "r", encoding="utf-8") as file:
-            lines = file.readlines()
-        with open("favorites.txt", "w", encoding="utf-8") as file:
-            for line in lines:
-                if not line.startswith(f"{user_id},{name},"):
-                    file.write(line)
-        return True
-    except Exception as e:
-        logging.error(f"Error removing favorite: {e}")
-        return False
+    conn = sqlite3.connect('toilets.db')
+    c = conn.cursor()
 
-# Get user's favorites from file
+    # Remove the favorite toilet
+    c.execute('DELETE FROM favorites WHERE user_id = ? AND toilet_name = ?', (user_id, name))
+
+    conn.commit()
+    conn.close()
+
+    logging.info(f"Removed {name} from favorites for user {user_id}")
+
+# Get user's favorites from SQLite
 def get_user_favorites(user_id):
     favorites = []
-    try:
-        with open("favorites.txt", "r", encoding="utf-8") as file:
-            for line in file:
-                data = line.strip().split(',')
-                if data[0] == user_id:
-                    favorites.append({
-                        "name": data[1],
-                        "lat": float(data[2]),
-                        "lon": float(data[3]),
-                        "address": data[4],
-                        "type": "favorite",
-                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
-                    })
-    except FileNotFoundError:
-        logging.error("favorites.txt not found.")
+    conn = sqlite3.connect('toilets.db')
+    c = conn.cursor()
+
+    # Query for user's favorite toilets
+    c.execute('SELECT toilet_name, latitude, longitude, address FROM favorites WHERE user_id = ?', (user_id,))
+    rows = c.fetchall()
+
+    for row in rows:
+        favorites.append({
+            "name": row[0],
+            "lat": row[1],
+            "lon": row[2],
+            "address": row[3],
+            "type": "favorite",
+            "distance": 0  # Distance for favorites is set to 0 as it is fixed
+        })
+
+    conn.close()
     return favorites
 
 # Create flex message to display toilets
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # 使用 OpenStreetMap 顯示地圖（Leaflet API 或其他方式）
         map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
 
-        # 按鈕 - 導航到最近廁所
         navigation_button = {
             "type": "button",
             "style": "primary",
             "color": "#00BFFF",
             "action": URIAction(
                 label="導航至最近廁所",
-                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # 導航到指定經緯度
+                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
             )
         }
 
-        # 按鈕 - 加入最愛或刪除最愛
         action_button = {
             "type": "button",
             "style": "primary",
@@ -181,7 +204,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,  # 使用 OSM 地圖的 URL
+                "url": map_url,
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
@@ -193,13 +216,13 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                     {"type": "text", "text": t['name'], "weight": "bold", "size": "lg"},
                     {"type": "text", "text": f"距離：{t['distance']:.1f} 公尺" if t['distance'] else "", "size": "sm", "color": "#555555", "margin": "md"},
                     {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"},
-                    {"type": "text", "text": f"類型：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
+                    {"type": "text", "text": f"來源：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
                 ]
             },
             "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "contents": [navigation_button, action_button],  # 包括導航按鈕和加入/刪除最愛按鈕
+                "contents": [navigation_button, action_button],
                 "spacing": "sm",
                 "flex": 0
             }
