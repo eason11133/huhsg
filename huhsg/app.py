@@ -5,10 +5,10 @@ import requests
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError, LineBotApiError
+from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
-    FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction, URIAction
+    FlexSendMessage, PostbackEvent, TextSendMessage, URIAction
 )
 
 # Load environment variables
@@ -143,7 +143,7 @@ def get_user_favorites(user_id):
                         "lon": float(data[3]),
                         "address": data[4],
                         "type": "favorite",
-                        "distance": 0
+                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
@@ -153,21 +153,18 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # Using OpenStreetMap map URL
         map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
-
-        # Navigation Button to Google Maps
+        
         navigation_button = {
             "type": "button",
             "style": "primary",
             "color": "#00BFFF",
             "action": URIAction(
                 label="導航至最近廁所",
-                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # Navigate to specified coordinates
+                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
             )
         }
 
-        # Add to favorites or remove from favorites button
         action_button = {
             "type": "button",
             "style": "primary",
@@ -183,7 +180,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,  # Use OSM map URL here
+                "url": map_url,  
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
