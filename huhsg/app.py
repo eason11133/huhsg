@@ -85,7 +85,7 @@ def query_local_toilets(lat, lon):
         logging.error("toilets.txt not found.")
         return []
 
-    return sorted(toilets, key=lambda x: x['distance'])
+    return toilets
 
 # Query OpenStreetMap for nearby toilets
 def query_overpass_toilets(lat, lon, radius=1000):
@@ -118,7 +118,6 @@ def query_overpass_toilets(lat, lon, radius=1000):
         dist = haversine(lat, lon, t_lat, t_lon)
         name = elem.get("tags", {}).get("name", "無名稱")
         toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": "osm"})
-    toilets.sort(key=lambda x: x["distance"])
     return toilets
 
 # Add toilet to favorites (SQLite version)
@@ -126,11 +125,21 @@ def add_to_favorites(user_id, toilet):
     conn = sqlite3.connect('toilets.db')
     c = conn.cursor()
 
-    # Insert or replace the favorite toilet
+    # Check if user already has 10 favorites
+    c.execute('SELECT COUNT(*) FROM favorites WHERE user_id = ?', (user_id,))
+    count = c.fetchone()[0]
+    if count >= 10:
+        line_bot_api.reply_message(
+            event.reply_token, 
+            TextSendMessage(text="您的最愛已經滿了，無法再加入更多！")
+        )
+        return
+    
+    # Insert or replace favorite toilet
     c.execute('''
     INSERT OR REPLACE INTO favorites (user_id, toilet_name, latitude, longitude, address)
     VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, toilet['name'], toilet['lat'], toilet['lon'], toilet['address']))
+    ''', (user_id, toilet['name'] if toilet['name'] else f"無名稱 ({toilet['lat']}, {toilet['lon']})", toilet['lat'], toilet['lon'], toilet['address']))
 
     conn.commit()
     conn.close()
@@ -157,7 +166,7 @@ def get_user_favorites(user_id):
     c = conn.cursor()
 
     # Query for user's favorite toilets
-    c.execute('SELECT toilet_name, latitude, longitude, address FROM favorites WHERE user_id = ?', (user_id,))
+    c.execute('SELECT toilet_name, latitude, longitude, address FROM favorites WHERE user_id = ? ORDER BY rowid DESC', (user_id,))
     rows = c.fetchall()
 
     for row in rows:
@@ -184,8 +193,8 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "style": "primary",
             "color": "#00BFFF",
             "action": URIAction(
-                label="導航至最近廁所",
-                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
+                label="點擊地圖導航",
+                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # 點擊地圖導航
             )
         }
 
@@ -255,10 +264,7 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
         lat, lon = user_locations[uid]
-        local_toilets = query_local_toilets(lat, lon)
-        osm_toilets = query_overpass_toilets(lat, lon)
-        all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
-        last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
+        all_toilets = get_all_toilets(lat, lon)  # 查詢本地廁所和 OSM 廁所，並按距離排序
         msg = create_toilet_flex_messages(all_toilets)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
