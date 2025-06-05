@@ -120,6 +120,20 @@ def query_overpass_toilets(lat, lon, radius=1000):
         toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": "osm"})
     return toilets
 
+# Combine local and OSM toilets
+def get_all_toilets(lat, lon):
+    # Query local toilets
+    local_toilets = query_local_toilets(lat, lon)
+    
+    # Query OSM toilets
+    osm_toilets = query_overpass_toilets(lat, lon)
+
+    # Combine and sort by distance
+    all_toilets = local_toilets + osm_toilets
+    sorted_toilets = sorted(all_toilets, key=lambda x: x['distance'])
+
+    return sorted_toilets[:MAX_TOILETS_REPLY]  # Return top 5 nearest toilets
+
 # Add toilet to favorites (SQLite version)
 def add_to_favorites(user_id, toilet):
     conn = sqlite3.connect('toilets.db')
