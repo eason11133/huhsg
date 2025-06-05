@@ -46,7 +46,9 @@ def haversine(lat1, lon1, lat2, lon2):
 def query_local_toilets(lat, lon):
     toilets = []
     try:
-        with open('toilets.txt', 'r', encoding='utf-8') as file:
+        # Update path to correctly find the toilets.txt file
+        toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
+        with open(toilets_file_path, 'r', encoding='utf-8') as file:
             # Skip header
             next(file)
             for line in file:
@@ -151,21 +153,21 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # 使用 OpenStreetMap 顯示地圖（Leaflet API 或其他方式）
+        # Using OpenStreetMap map URL
         map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
 
-        # 按鈕 - 導航到最近廁所
+        # Navigation Button to Google Maps
         navigation_button = {
             "type": "button",
             "style": "primary",
             "color": "#00BFFF",
             "action": URIAction(
                 label="導航至最近廁所",
-                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # 導航到指定經緯度
+                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # Navigate to specified coordinates
             )
         }
 
-        # 按鈕 - 加入最愛或刪除最愛
+        # Add to favorites or remove from favorites button
         action_button = {
             "type": "button",
             "style": "primary",
@@ -181,7 +183,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,  # 使用 OSM 地圖的 URL
+                "url": map_url,  # Use OSM map URL here
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
@@ -199,7 +201,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "contents": [navigation_button, action_button],  # 包括導航按鈕和加入/刪除最愛按鈕
+                "contents": [navigation_button, action_button],  # Include navigation and add/remove favorite buttons
                 "spacing": "sm",
                 "flex": 0
             }
@@ -208,17 +210,9 @@ def create_toilet_flex_messages(toilets, show_delete=False):
 
     return {"type": "carousel", "contents": bubbles}
 
-# Get all toilets (local and OSM) and sort by distance
-def get_all_toilets(lat, lon):
-    # 先查詢本地廁所資料
-    local_toilets = query_local_toilets(lat, lon)
-
-    # 查詢 OSM 廁所資料
-    osm_toilets = query_overpass_toilets(lat, lon)
-
-    # 結合兩者並按距離排序
-    all_toilets = local_toilets + osm_toilets
-    return sorted(all_toilets, key=lambda x: x['distance'])
+@app.route("/")
+def home():
+    return "服務已啟動！"
 
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -240,12 +234,10 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
         lat, lon = user_locations[uid]
-        all_toilets = get_all_toilets(lat, lon)
-
-        if not all_toilets:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="附近沒有找到廁所"))
-            return
-        
+        local_toilets = query_local_toilets(lat, lon)
+        osm_toilets = query_overpass_toilets(lat, lon)
+        all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
+        last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
         msg = create_toilet_flex_messages(all_toilets)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
