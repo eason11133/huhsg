@@ -210,6 +210,10 @@ def create_toilet_flex_messages(toilets, show_delete=False):
 
     return {"type": "carousel", "contents": bubbles}
 
+@app.route("/")
+def home():
+    return "服務已啟動！"
+
 @app.route("/callback", methods=["POST"])
 def callback():
     signature = request.headers.get("X-Line-Signature")
@@ -236,7 +240,6 @@ def handle_text(event):
         last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
         msg = create_toilet_flex_messages(all_toilets)
         try:
-            # Ensure valid reply_token
             line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
         except LineBotApiError as e:
             logging.error(f"LINE Bot API error: {e}")
@@ -251,30 +254,6 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
         except LineBotApiError as e:
             logging.error(f"LINE Bot API error: {e}")
-
-@handler.add(PostbackEvent)
-def handle_postback(event):
-    data = event.postback.data
-    uid = event.source.user_id
-    if data.startswith("add:"):
-        name = data[4:]
-        toilet = last_toilet_by_user.get(uid)
-        if toilet and toilet['name'] == name:
-            add_to_favorites(uid, toilet)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已收藏 {name}"))
-    elif data.startswith("remove:"):
-        name = data[7:]
-        if remove_from_favorites(uid, name):
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 已移除 {name}"))
-        else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="找不到該收藏"))
-
-@handler.add(MessageEvent, message=LocationMessage)
-def handle_location(event):
-    uid = event.source.user_id
-    lat, lon = event.message.latitude, event.message.longitude
-    user_locations[uid] = (lat, lon)
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 位置已更新，點 '附近廁所' 查詢"))
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 10000))
