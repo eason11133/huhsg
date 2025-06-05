@@ -201,7 +201,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "contents": [navigation_button, action_button],  # Include navigation and add/remove favorite buttons
+                "contents": [navigation_button, action_button],
                 "spacing": "sm",
                 "flex": 0
             }
