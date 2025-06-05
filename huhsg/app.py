@@ -235,7 +235,11 @@ def handle_text(event):
         all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
         last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
         msg = create_toilet_flex_messages(all_toilets)
-        line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
+        try:
+            # Ensure valid reply_token
+            line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
+        except LineBotApiError as e:
+            logging.error(f"LINE Bot API error: {e}")
 
     elif text == "我的最愛":
         favs = get_user_favorites(uid)
@@ -243,7 +247,11 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
             return
         msg = create_toilet_flex_messages(favs, show_delete=True)
-        line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
+        try:
+            line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
+        except LineBotApiError as e:
+            logging.error(f"LINE Bot API error: {e}")
+
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
