@@ -47,18 +47,27 @@ def query_local_toilets(lat, lon):
     toilets = []
     try:
         with open('toilets.txt', 'r', encoding='utf-8') as file:
+            # Skip header
+            next(file)
             for line in file:
                 data = line.strip().split(',')
-                if len(data) != 5:
+                if len(data) != 13:
                     continue
-                name, category, t_lat, t_lon, address = data
+                # Extract relevant data
+                country, city, village, number, name, address, admin, latitude, longitude, grade, type2, type_, exec_, diaper = data
                 try:
-                    t_lat, t_lon = float(t_lat), float(t_lon)
+                    t_lat, t_lon = float(latitude), float(longitude)
                 except ValueError:
                     continue
                 dist = haversine(lat, lon, t_lat, t_lon)
-                toilets.append({"name": name or "無名稱", "lat": t_lat, "lon": t_lon,
-                                "address": address or "", "distance": dist, "type": "local"})
+                toilets.append({
+                    "name": name or "無名稱", 
+                    "lat": t_lat, 
+                    "lon": t_lon,
+                    "address": address or "", 
+                    "distance": dist, 
+                    "type": type_  # Store type of toilet for later use
+                })
     except FileNotFoundError:
         logging.error("toilets.txt not found.")
         return []
@@ -184,7 +193,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                     {"type": "text", "text": t['name'], "weight": "bold", "size": "lg"},
                     {"type": "text", "text": f"距離：{t['distance']:.1f} 公尺" if t['distance'] else "", "size": "sm", "color": "#555555", "margin": "md"},
                     {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"},
-                    {"type": "text", "text": f"來源：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
+                    {"type": "text", "text": f"類型：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
                 ]
             },
             "footer": {
