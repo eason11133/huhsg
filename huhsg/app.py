@@ -14,16 +14,19 @@ from linebot.models import (
 # Load environment variables
 load_dotenv()
 
+# Initialize Flask and LINE API
+app = Flask(__name__)
+line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
+handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
+
 # Ensure favorites file exists
 def ensure_favorites_file():
     if not os.path.exists("favorites.txt"):
         with open("favorites.txt", "w", encoding="utf-8") as f:
             pass  # Create an empty file if it doesn't exist
 
-# Initialize Flask and LINE API
-app = Flask(__name__)
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
+# Ensure the favorites.txt file exists at the start
+ensure_favorites_file()
 
 user_locations = {}
 last_toilet_by_user = {}
@@ -31,9 +34,6 @@ MAX_TOILETS_REPLY = 5
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# Ensure the favorites.txt file exists at the start
-ensure_favorites_file()
 
 # Calculate the distance using the Haversine formula
 def haversine(lat1, lon1, lat2, lon2):
