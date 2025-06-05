@@ -132,7 +132,7 @@ def get_user_favorites(user_id):
                         "lon": float(data[3]),
                         "address": data[4],
                         "type": "favorite",
-                        "distance": 0
+                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
