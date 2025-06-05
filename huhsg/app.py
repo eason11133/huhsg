@@ -8,7 +8,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
-    FlexSendMessage, PostbackEvent, TextSendMessage, URIAction
+    FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction, URIAction
 )
 
 # Load environment variables
@@ -153,18 +153,21 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
+        # Using OpenStreetMap map URL
         map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
-        
+
+        # Navigation Button to Google Maps
         navigation_button = {
             "type": "button",
             "style": "primary",
             "color": "#00BFFF",
             "action": URIAction(
                 label="導航至最近廁所",
-                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
+                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # Navigate to specified coordinates
             )
         }
 
+        # Add to favorites or remove from favorites button
         action_button = {
             "type": "button",
             "style": "primary",
@@ -180,7 +183,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,  
+                "url": map_url,  # Use OSM map URL here
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
@@ -206,6 +209,10 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
 
     return {"type": "carousel", "contents": bubbles}
+
+@app.route("/")
+def home():
+    return "Service is running!"
 
 @app.route("/callback", methods=["POST"])
 def callback():
