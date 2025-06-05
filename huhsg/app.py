@@ -5,7 +5,7 @@ import requests
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError, LineBotApiError
+from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
     FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction, URIAction
@@ -13,6 +13,12 @@ from linebot.models import (
 
 # Load environment variables
 load_dotenv()
+
+# Ensure favorites file exists
+def ensure_favorites_file():
+    if not os.path.exists("favorites.txt"):
+        with open("favorites.txt", "w", encoding="utf-8") as f:
+            pass  # Create an empty file if it doesn't exist
 
 # Initialize Flask and LINE API
 app = Flask(__name__)
@@ -25,6 +31,9 @@ MAX_TOILETS_REPLY = 5
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Ensure the favorites.txt file exists at the start
+ensure_favorites_file()
 
 # Calculate the distance using the Haversine formula
 def haversine(lat1, lon1, lat2, lon2):
@@ -132,7 +141,7 @@ def get_user_favorites(user_id):
                         "lon": float(data[3]),
                         "address": data[4],
                         "type": "favorite",
-                        "distance": 0
+                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
@@ -199,9 +208,17 @@ def create_toilet_flex_messages(toilets, show_delete=False):
 
     return {"type": "carousel", "contents": bubbles}
 
-@app.route("/")
-def home():
-    return "服務已啟動！"
+# Get all toilets (local and OSM) and sort by distance
+def get_all_toilets(lat, lon):
+    # 先查詢本地廁所資料
+    local_toilets = query_local_toilets(lat, lon)
+
+    # 查詢 OSM 廁所資料
+    osm_toilets = query_overpass_toilets(lat, lon)
+
+    # 結合兩者並按距離排序
+    all_toilets = local_toilets + osm_toilets
+    return sorted(all_toilets, key=lambda x: x['distance'])
 
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -217,22 +234,20 @@ def callback():
 def handle_text(event):
     text = event.message.text.lower()
     uid = event.source.user_id
-    
-    # Print reply_token to check its validity
-    logging.info(f"Received reply token: {event.reply_token}")
 
     if text == "附近廁所":
         if uid not in user_locations:
-            # If no location, ask user to send it
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
         lat, lon = user_locations[uid]
         all_toilets = get_all_toilets(lat, lon)
+
+        if not all_toilets:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="附近沒有找到廁所"))
+            return
+        
         msg = create_toilet_flex_messages(all_toilets)
-        try:
-            line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
-        except LineBotApiError as e:
-            logging.error(f"Error while sending reply: {e}")
+        line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
     elif text == "我的最愛":
         favs = get_user_favorites(uid)
@@ -240,10 +255,7 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
             return
         msg = create_toilet_flex_messages(favs, show_delete=True)
-        try:
-            line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
-        except LineBotApiError as e:
-            logging.error(f"Error while sending reply: {e}")
+        line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
