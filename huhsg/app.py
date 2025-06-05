@@ -252,7 +252,6 @@ def handle_text(event):
         except LineBotApiError as e:
             logging.error(f"LINE Bot API error: {e}")
 
-
 @handler.add(PostbackEvent)
 def handle_postback(event):
     data = event.postback.data
