@@ -143,7 +143,7 @@ def get_user_favorites(user_id):
                         "lon": float(data[3]),
                         "address": data[4],
                         "type": "favorite",
-                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
+                        "distance": 0
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
@@ -209,6 +209,10 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
 
     return {"type": "carousel", "contents": bubbles}
+
+@app.route("/")
+def home():
+    return "服務已啟動！"
 
 @app.route("/callback", methods=["POST"])
 def callback():
