@@ -5,7 +5,7 @@ import requests
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
+from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
     FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction, URIAction
@@ -209,10 +209,6 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
 
     return {"type": "carousel", "contents": bubbles}
-
-@app.route("/")
-def home():
-    return "服務已啟動！"
 
 @app.route("/callback", methods=["POST"])
 def callback():
