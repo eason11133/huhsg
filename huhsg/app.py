@@ -149,17 +149,17 @@ def get_user_favorites(user_id):
         logging.error("favorites.txt not found.")
     return favorites
 
-# Create flex message to display toilets
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
+        # 使用 OpenStreetMap 靜態地圖 URL，並確保使用 HTTPS
         map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers={t['lat']},{t['lon']}&format=png"
         
         bubble = {
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,
+                "url": map_url,  # 使用 OpenStreetMap 靜態地圖 URL
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
@@ -205,6 +205,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
 
     return {"type": "carousel", "contents": bubbles}
+
 
 @app.route("/callback", methods=["POST"])
 def callback():
