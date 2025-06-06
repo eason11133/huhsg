@@ -1,4 +1,4 @@
-import os
+import os 
 import logging
 from math import radians, cos, sin, asin, sqrt
 import requests
@@ -76,7 +76,7 @@ def query_local_toilets(lat, lon):
 
     return sorted(toilets, key=lambda x: x['distance'])
 
-# Query OpenStreetMap for nearby toilets and other amenities
+# Query OpenStreetMap for nearby toilets and other locations like shops, restaurants, and public transport
 def query_overpass_toilets(lat, lon, radius=1000):
     url = "https://overpass-api.de/api/interpreter"
     query = f"""
@@ -85,10 +85,9 @@ def query_overpass_toilets(lat, lon, radius=1000):
       node["amenity"="toilets"](around:{radius},{lat},{lon});
       way["amenity"="toilets"](around:{radius},{lat},{lon});
       relation["amenity"="toilets"](around:{radius},{lat},{lon});
-      node["amenity"="toilets"]["shop"](around:{radius},{lat},{lon});  // 超商
-      node["amenity"="toilets"]["restaurant"](around:{radius},{lat},{lon});  // 餐廳
-      node["amenity"="toilets"]["public_transport"](around:{radius},{lat},{lon});  // 公共交通（如車站）
-      node["amenity"="toilets"]["school"](around:{radius},{lat},{lon});  // 學校
+      node["amenity"="toilets"]["shop"](around:{radius},{lat},{lon});
+      node["amenity"="toilets"]["restaurant"](around:{radius},{lat},{lon});
+      node["amenity"="toilets"]["public_transport"](around:{radius},{lat},{lon});
     );
     out center;
     """
@@ -110,8 +109,7 @@ def query_overpass_toilets(lat, lon, radius=1000):
             continue
         dist = haversine(lat, lon, t_lat, t_lon)
         name = elem.get("tags", {}).get("name", "無名稱")
-        amenities = elem.get("tags", {}).get("amenity", "無類型")
-        toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": amenities})
+        toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": "osm"})
     toilets.sort(key=lambda x: x["distance"])
     return toilets
 
@@ -154,17 +152,18 @@ def get_user_favorites(user_id):
         logging.error("favorites.txt not found.")
     return favorites
 
-# Create flex message to display toilets and other amenities
+# Create flex message to display toilets
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
+        # 使用Google靜態地圖URL來顯示地圖
+        map_url = f"https://maps.googleapis.com/maps/api/staticmap?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers=color:red|{t['lat']},{t['lon']}&key=YOUR_GOOGLE_MAPS_API_KEY"
         
         bubble = {
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,
+                "url": map_url,  # 使用Google靜態地圖URL
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
@@ -173,7 +172,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
-                    {"type": "text", "text": t['name'], "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": t['name'] if t['name'] else "無名稱", "weight": "bold", "size": "lg"},
                     {"type": "text", "text": f"距離：{t['distance']:.1f} 公尺", "size": "sm", "color": "#555555", "margin": "md"},
                     {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"},
                     {"type": "text", "text": f"類型：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
