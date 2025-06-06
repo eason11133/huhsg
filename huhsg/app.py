@@ -46,13 +46,16 @@ def haversine(lat1, lon1, lat2, lon2):
 def query_local_toilets(lat, lon):
     toilets = []
     try:
+        # Update path to correctly find the toilets.txt file
         toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
         with open(toilets_file_path, 'r', encoding='utf-8') as file:
-            next(file)  # Skip header
+            # Skip header
+            next(file)
             for line in file:
                 data = line.strip().split(',')
                 if len(data) != 13:
                     continue
+                # Extract relevant data
                 country, city, village, number, name, address, admin, latitude, longitude, grade, type2, type_, exec_, diaper = data
                 try:
                     t_lat, t_lon = float(latitude), float(longitude)
@@ -65,7 +68,7 @@ def query_local_toilets(lat, lon):
                     "lon": t_lon,
                     "address": address or "", 
                     "distance": dist, 
-                    "type": type_
+                    "type": type_  # Store type of toilet for later use
                 })
     except FileNotFoundError:
         logging.error("toilets.txt not found.")
@@ -140,51 +143,34 @@ def get_user_favorites(user_id):
                         "lon": float(data[3]),
                         "address": data[4],
                         "type": "favorite",
-                        "distance": 0
+                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
     return favorites
 
-# Create flex message to display toilets with map and combined navigation button
+# Create flex message to display toilets
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # Using OpenStreetMap URL to generate a static image of the map (for display purpose)
+        # Combining map URL and navigation link into one button
         map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
-
-        # Combine the map image and navigation action in a single button
-        navigation_button = {
-            "type": "image",
-            "url": map_url,  # Map image from OpenStreetMap
-            "action": URIAction(
-                label="導航至最近廁所",
-                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # Link to Google Maps for navigation
-            )
-        }
-
-        # Add to favorites or remove from favorites button
-        action_button = {
-            "type": "button",
-            "style": "primary",
-            "color": "#FFA07A",
-            "action": {
-                "type": "postback",
-                "label": "刪除最愛" if show_delete else "加入最愛",
-                "data": f"{'remove' if show_delete else 'add'}:{t['name']}"
-            }
-        }
-
-        # Create the Flex bubble layout
+        
         bubble = {
             "type": "bubble",
-            "hero": navigation_button,  # Display the map with navigation action as a button
+            "hero": {
+                "type": "image",
+                "url": map_url,
+                "size": "full",
+                "aspectMode": "cover",
+                "aspectRatio": "20:13"
+            },
             "body": {
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
                     {"type": "text", "text": t['name'], "weight": "bold", "size": "lg"},
-                    {"type": "text", "text": f"距離：{t['distance']:.1f} 公尺" if t['distance'] else "", "size": "sm", "color": "#555555", "margin": "md"},
+                    {"type": "text", "text": f"距離：{t['distance']:.1f} 公尺", "size": "sm", "color": "#555555", "margin": "md"},
                     {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"},
                     {"type": "text", "text": f"類型：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
                 ]
@@ -192,7 +178,27 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "contents": [action_button],
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "color": "#00BFFF",
+                        "action": URIAction(
+                            label="導航至最近廁所",
+                            uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
+                        )
+                    },
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "color": "#FFA07A",
+                        "action": {
+                            "type": "postback",
+                            "label": "刪除最愛" if show_delete else "加入最愛",
+                            "data": f"{'remove' if show_delete else 'add'}:{t['name']}"
+                        }
+                    }
+                ],
                 "spacing": "sm",
                 "flex": 0
             }
@@ -226,10 +232,7 @@ def handle_text(event):
         all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
         last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
         msg = create_toilet_flex_messages(all_toilets)
-        try:
-            line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
-        except LineBotApiError as e:
-            logging.error(f"LINE Bot API error: {e}")
+        line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
     elif text == "我的最愛":
         favs = get_user_favorites(uid)
@@ -237,10 +240,7 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
             return
         msg = create_toilet_flex_messages(favs, show_delete=True)
-        try:
-            line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
-        except LineBotApiError as e:
-            logging.error(f"LINE Bot API error: {e}")
+        line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
