@@ -149,6 +149,7 @@ def get_user_favorites(user_id):
         logging.error("favorites.txt not found.")
     return favorites
 
+# Create flex message to display toilets
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
@@ -205,7 +206,6 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
 
     return {"type": "carousel", "contents": bubbles}
-
 
 @app.route("/callback", methods=["POST"])
 def callback():
