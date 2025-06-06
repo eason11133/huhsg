@@ -5,7 +5,7 @@ import requests
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError, LineBotApiError  # 這行是新增的
+from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
     FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction, URIAction
