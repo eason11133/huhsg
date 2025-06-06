@@ -46,16 +46,13 @@ def haversine(lat1, lon1, lat2, lon2):
 def query_local_toilets(lat, lon):
     toilets = []
     try:
-        # Update path to correctly find the toilets.txt file
         toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
         with open(toilets_file_path, 'r', encoding='utf-8') as file:
-            # Skip header
             next(file)
             for line in file:
                 data = line.strip().split(',')
                 if len(data) != 13:
                     continue
-                # Extract relevant data
                 country, city, village, number, name, address, admin, latitude, longitude, grade, type2, type_, exec_, diaper = data
                 try:
                     t_lat, t_lon = float(latitude), float(longitude)
@@ -68,7 +65,7 @@ def query_local_toilets(lat, lon):
                     "lon": t_lon,
                     "address": address or "", 
                     "distance": dist, 
-                    "type": type_  # Store type of toilet for later use
+                    "type": type_
                 })
     except FileNotFoundError:
         logging.error("toilets.txt not found.")
@@ -146,7 +143,7 @@ def get_user_favorites(user_id):
                         "lon": float(data[3]),
                         "address": data[4],
                         "type": "favorite",
-                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
+                        "distance": 0
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
@@ -156,14 +153,13 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # 使用Google靜態地圖URL來顯示地圖
-        map_url = f"https://maps.googleapis.com/maps/api/staticmap?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers=color:red|{t['lat']},{t['lon']}&key=YOUR_GOOGLE_MAPS_API_KEY"
+        map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers={t['lat']},{t['lon']}&format=png"
         
         bubble = {
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,  # 使用Google靜態地圖URL
+                "url": map_url,
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
@@ -188,7 +184,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                         "color": "#00BFFF",
                         "action": URIAction(
                             label="導航至最近廁所",
-                            uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"
+                            uri=f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}"
                         )
                     },
                     {
