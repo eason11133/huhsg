@@ -42,41 +42,7 @@ def haversine(lat1, lon1, lat2, lon2):
     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
     return 2 * asin(sqrt(a)) * 6371000
 
-# Read toilets from text file
-def query_local_toilets(lat, lon):
-    toilets = []
-    try:
-        # Update path to correctly find the toilets.txt file
-        toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
-        with open(toilets_file_path, 'r', encoding='utf-8') as file:
-            # Skip header
-            next(file)
-            for line in file:
-                data = line.strip().split(',')
-                if len(data) != 13:
-                    continue
-                # Extract relevant data
-                country, city, village, number, name, address, admin, latitude, longitude, grade, type2, type_, exec_, diaper = data
-                try:
-                    t_lat, t_lon = float(latitude), float(longitude)
-                except ValueError:
-                    continue
-                dist = haversine(lat, lon, t_lat, t_lon)
-                toilets.append({
-                    "name": name or "無名稱", 
-                    "lat": t_lat, 
-                    "lon": t_lon,
-                    "address": address or "", 
-                    "distance": dist, 
-                    "type": type_  # Store type of toilet for later use
-                })
-    except FileNotFoundError:
-        logging.error("toilets.txt not found.")
-        return []
-
-    return sorted(toilets, key=lambda x: x['distance'])
-
-# Query OpenStreetMap for nearby toilets
+# Query OpenStreetMap for nearby toilets and other amenities
 def query_overpass_toilets(lat, lon, radius=1000):
     url = "https://overpass-api.de/api/interpreter"
     query = f"""
@@ -85,6 +51,10 @@ def query_overpass_toilets(lat, lon, radius=1000):
       node["amenity"="toilets"](around:{radius},{lat},{lon});
       way["amenity"="toilets"](around:{radius},{lat},{lon});
       relation["amenity"="toilets"](around:{radius},{lat},{lon});
+      node["amenity"="toilets"]["shop"](around:{radius},{lat},{lon});  // 超商
+      node["amenity"="toilets"]["restaurant"](around:{radius},{lat},{lon});  // 餐廳
+      node["amenity"="toilets"]["public_transport"](around:{radius},{lat},{lon});  // 公共交通（如車站）
+      node["amenity"="toilets"]["school"](around:{radius},{lat},{lon});  // 學校
     );
     out center;
     """
@@ -106,7 +76,8 @@ def query_overpass_toilets(lat, lon, radius=1000):
             continue
         dist = haversine(lat, lon, t_lat, t_lon)
         name = elem.get("tags", {}).get("name", "無名稱")
-        toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": "osm"})
+        amenities = elem.get("tags", {}).get("amenity", "無類型")
+        toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": amenities})
     toilets.sort(key=lambda x: x["distance"])
     return toilets
 
@@ -149,7 +120,7 @@ def get_user_favorites(user_id):
         logging.error("favorites.txt not found.")
     return favorites
 
-# Create flex message to display toilets
+# Create flex message to display toilets and other amenities
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
