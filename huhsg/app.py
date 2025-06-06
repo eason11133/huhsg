@@ -46,16 +46,13 @@ def haversine(lat1, lon1, lat2, lon2):
 def query_local_toilets(lat, lon):
     toilets = []
     try:
-        # Update path to correctly find the toilets.txt file
         toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
         with open(toilets_file_path, 'r', encoding='utf-8') as file:
-            # Skip header
-            next(file)
+            next(file)  # Skip header
             for line in file:
                 data = line.strip().split(',')
                 if len(data) != 13:
                     continue
-                # Extract relevant data
                 country, city, village, number, name, address, admin, latitude, longitude, grade, type2, type_, exec_, diaper = data
                 try:
                     t_lat, t_lon = float(latitude), float(longitude)
@@ -68,7 +65,7 @@ def query_local_toilets(lat, lon):
                     "lon": t_lon,
                     "address": address or "", 
                     "distance": dist, 
-                    "type": type_  # Store type of toilet for later use
+                    "type": type_
                 })
     except FileNotFoundError:
         logging.error("toilets.txt not found.")
@@ -143,27 +140,26 @@ def get_user_favorites(user_id):
                         "lon": float(data[3]),
                         "address": data[4],
                         "type": "favorite",
-                        "distance": 0  # Distance can be set to 0 for favorites since it’s a fixed list
+                        "distance": 0
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
     return favorites
 
-# Create flex message to display toilets
+# Create flex message to display toilets with map and combined navigation button
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # Using OpenStreetMap map URL
+        # Using OpenStreetMap URL to generate a static image of the map (for display purpose)
         map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
 
-        # Navigation Button to Google Maps
+        # Combine the map image and navigation action in a single button
         navigation_button = {
-            "type": "button",
-            "style": "primary",
-            "color": "#00BFFF",
+            "type": "image",
+            "url": map_url,  # Map image from OpenStreetMap
             "action": URIAction(
                 label="導航至最近廁所",
-                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # Navigate to specified coordinates
+                uri=f"https://www.google.com/maps?q={t['lat']},{t['lon']}"  # Link to Google Maps for navigation
             )
         }
 
@@ -179,15 +175,10 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             }
         }
 
+        # Create the Flex bubble layout
         bubble = {
             "type": "bubble",
-            "hero": {
-                "type": "image",
-                "url": map_url,  # Use OSM map URL here
-                "size": "full",
-                "aspectMode": "cover",
-                "aspectRatio": "20:13"
-            },
+            "hero": navigation_button,  # Display the map with navigation action as a button
             "body": {
                 "type": "box",
                 "layout": "vertical",
@@ -201,7 +192,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
             "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "contents": [navigation_button, action_button],
+                "contents": [action_button],
                 "spacing": "sm",
                 "flex": 0
             }
@@ -209,10 +200,6 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
 
     return {"type": "carousel", "contents": bubbles}
-
-@app.route("/")
-def home():
-    return "Service is running!"
 
 @app.route("/callback", methods=["POST"])
 def callback():
