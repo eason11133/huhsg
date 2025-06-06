@@ -153,7 +153,6 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # Combining map URL and navigation link into one button
         map_url = f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}#map=15/{t['lat']}/{t['lon']}"
         
         bubble = {
