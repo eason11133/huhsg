@@ -155,8 +155,8 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         # 使用 OpenStreetMap 靜態地圖服務的 URL
         map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers={t['lat']},{t['lon']}&format=png"
         
-        # 嘗試在瀏覽器中查看 map_url 是否直接顯示圖片
-        print(f"Map URL: {map_url}")  # 用於調試，檢查生成的 URL 是否正確
+        # 打印地圖 URL 用於調試
+        print(f"Map URL: {map_url}")  # 用於檢查 URL 是否有效
 
         bubble = {
             "type": "bubble",
@@ -208,7 +208,6 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         bubbles.append(bubble)
 
     return {"type": "carousel", "contents": bubbles}
-
 
 @app.route("/callback", methods=["POST"])
 def callback():
