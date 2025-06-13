@@ -1,4 +1,4 @@
-import os
+import os 
 import logging
 from math import radians, cos, sin, asin, sqrt
 import requests
@@ -155,9 +155,12 @@ def create_toilet_flex_messages(toilets, show_delete=False):
         # 使用 OpenStreetMap 靜態地圖服務的 URL
         map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers={t['lat']},{t['lon']}&format=png"
         
-        # 打印地圖 URL 用於調試
-        print(f"Map URL: {map_url}")  # 用於檢查 URL 是否有效
-
+        # 顯示廁所名稱，若無則顯示 "無名稱"
+        name = t['name'] if t['name'] else "無名稱"
+        
+        # 顯示距離
+        distance_text = f"距離：{t['distance']:.1f} 公尺"
+        
         bubble = {
             "type": "bubble",
             "hero": {
@@ -171,8 +174,8 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
-                    {"type": "text", "text": t['name'] if t['name'] else "無名稱", "weight": "bold", "size": "lg"},
-                    {"type": "text", "text": f"距離：{t['distance']:.1f} 公尺", "size": "sm", "color": "#555555", "margin": "md"},
+                    {"type": "text", "text": name, "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": distance_text, "size": "sm", "color": "#555555", "margin": "md"},
                     {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"},
                     {"type": "text", "text": f"類型：{t['type']}", "size": "sm", "color": "#aaaaaa", "margin": "md"}
                 ]
@@ -230,30 +233,27 @@ def handle_text(event):
     text = event.message.text.lower()
     uid = event.source.user_id
 
-    try:
-        if text == "附近廁所":
-            if uid not in user_locations:
-                line_bot_api.push_message(uid, TextSendMessage(text="請先傳送位置"))
-                return
-            lat, lon = user_locations[uid]
-            local_toilets = query_local_toilets(lat, lon)
-            osm_toilets = query_overpass_toilets(lat, lon)
-            all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
-            last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
-            msg = create_toilet_flex_messages(all_toilets)
-            line_bot_api.push_message(uid, FlexSendMessage("附近廁所", msg))
+    if text == "附近廁所":
+        if uid not in user_locations:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
+            return
+        lat, lon = user_locations[uid]
+        local_toilets = query_local_toilets(lat, lon)
+        osm_toilets = query_overpass_toilets(lat, lon)
+        all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
+        last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
+        msg = create_toilet_flex_messages(all_toilets)
+        # 只回覆一次，並不會重複回應
+        line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
-        elif text == "我的最愛":
-            favs = get_user_favorites(uid)
-            if not favs:
-                line_bot_api.push_message(uid, TextSendMessage(text="你尚未收藏任何廁所"))
-                return
-            msg = create_toilet_flex_messages(favs, show_delete=True)
-            line_bot_api.push_message(uid, FlexSendMessage("我的最愛", msg))
-
-    except LineBotApiError as e:
-        logging.error(f"LINE Bot API error: {e}")
-        line_bot_api.push_message(uid, TextSendMessage(text="處理錯誤，請稍後再試。"))
+    elif text == "我的最愛":
+        favs = get_user_favorites(uid)
+        if not favs:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
+            return
+        msg = create_toilet_flex_messages(favs, show_delete=True)
+        # 只回覆一次，並不會重複回應
+        line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
@@ -264,20 +264,20 @@ def handle_postback(event):
         toilet = last_toilet_by_user.get(uid)
         if toilet and toilet['name'] == name:
             add_to_favorites(uid, toilet)
-            line_bot_api.push_message(uid, TextSendMessage(text=f"✅ 已收藏 {name}"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已收藏 {name}"))
     elif data.startswith("remove:"):
         name = data[7:]
         if remove_from_favorites(uid, name):
-            line_bot_api.push_message(uid, TextSendMessage(text=f"❌ 已移除 {name}"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 已移除 {name}"))
         else:
-            line_bot_api.push_message(uid, TextSendMessage(text="找不到該收藏"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="找不到該收藏"))
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location(event):
     uid = event.source.user_id
     lat, lon = event.message.latitude, event.message.longitude
     user_locations[uid] = (lat, lon)
-    line_bot_api.push_message(uid, TextSendMessage(text="✅ 位置已更新，點 '附近廁所' 查詢"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 位置已更新，點 '附近廁所' 查詢"))
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 10000))
