@@ -1,4 +1,4 @@
-import os 
+import os
 import logging
 from math import radians, cos, sin, asin, sqrt
 import requests
@@ -10,6 +10,7 @@ from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
     FlexSendMessage, PostbackEvent, TextSendMessage, PostbackAction, URIAction
 )
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -38,6 +39,10 @@ MAX_TOILETS_REPLY = 5
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# To store already used reply tokens
+used_reply_tokens = set()
+reply_token_expiry = timedelta(minutes=1)  # 1 minute validity for each reply_token
 
 # Calculate the distance using the Haversine formula
 def haversine(lat1, lon1, lat2, lon2):
@@ -254,6 +259,11 @@ def handle_text(event):
     text = event.message.text.lower()
     uid = event.source.user_id
 
+    # 防止過期的 reply_token 或重複回覆
+    if event.reply_token in used_reply_tokens:
+        return
+    used_reply_tokens.add(event.reply_token)
+
     if text == "附近廁所":
         if uid not in user_locations:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
@@ -264,7 +274,7 @@ def handle_text(event):
         all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
         last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
         msg = create_toilet_flex_messages(all_toilets, lat, lon)
-        # 只回覆一次，並不會重複回應
+        # 只回覆一次
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
     elif text == "我的最愛":
@@ -273,7 +283,7 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
             return
         msg = create_toilet_flex_messages(favs, user_locations[uid][0], user_locations[uid][1], show_delete=True)
-        # 只回覆一次，並不會重複回應
+        # 只回覆一次
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
 
 @handler.add(PostbackEvent)
