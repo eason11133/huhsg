@@ -178,8 +178,9 @@ def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
         # 顯示廁所名稱，若無則顯示 "無名稱"
         name = t['name'] if t['name'] else "無名稱"
         
-        # 顯示距離
-        distance_text = f"距離：{t['distance']:.1f} 公尺"
+        # 計算與使用者的距離
+        dist = haversine(user_lat, user_lon, t['lat'], t['lon'])
+        distance_text = f"距離：{dist:.1f} 公尺"
         
         bubble = {
             "type": "bubble",
