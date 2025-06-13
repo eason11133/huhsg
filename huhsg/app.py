@@ -153,14 +153,14 @@ def get_user_favorites(user_id):
 def create_toilet_flex_messages(toilets, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
-        # 使用 OpenStreetMap 靜態地圖 URL，並確保使用 HTTPS
+        # 使用 OpenStreetMap 靜態地圖服務的 URL
         map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers={t['lat']},{t['lon']}&format=png"
         
         bubble = {
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": map_url,  # 使用 OpenStreetMap 靜態地圖 URL
+                "url": map_url,  # 使用 OpenStreetMap 靜態地圖服務的 URL
                 "size": "full",
                 "aspectMode": "cover",
                 "aspectRatio": "20:13"
