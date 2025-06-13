@@ -40,7 +40,7 @@ def haversine(lat1, lon1, lat2, lon2):
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlat, dlon = lat2 - lat1, lon2 - lon1
     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    return 2 * asin(sqrt(a)) * 6371000
+    return 2 * asin(sqrt(a)) * 6371000  # Return distance in meters
 
 # Read toilets from text file
 def query_local_toilets(lat, lon):
@@ -110,19 +110,20 @@ def query_overpass_toilets(lat, lon, radius=1000):
     toilets.sort(key=lambda x: x["distance"])
     return toilets
 
-# Add toilet to favorites
+# Add toilet to favorites using lat, lon as unique identifiers
 def add_to_favorites(user_id, toilet):
     with open("favorites.txt", "a", encoding="utf-8") as file:
         file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
 
 # Remove toilet from favorites
-def remove_from_favorites(user_id, name):
+def remove_from_favorites(user_id, name, lat, lon):
     try:
         with open("favorites.txt", "r", encoding="utf-8") as file:
             lines = file.readlines()
         with open("favorites.txt", "w", encoding="utf-8") as file:
             for line in lines:
-                if not line.startswith(f"{user_id},{name},"):
+                data = line.strip().split(',')
+                if not (data[0] == user_id and data[1] == name and data[2] == str(lat) and data[3] == str(lon)):
                     file.write(line)
         return True
     except Exception as e:
@@ -149,7 +150,7 @@ def get_user_favorites(user_id):
         logging.error("favorites.txt not found.")
     return favorites
 
-def create_toilet_flex_messages(toilets, show_delete=False):
+def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
     bubbles = []
     for t in toilets[:MAX_TOILETS_REPLY]:
         # 使用 OpenStreetMap 靜態地圖服務的 URL
@@ -200,7 +201,7 @@ def create_toilet_flex_messages(toilets, show_delete=False):
                         "action": {
                             "type": "postback",
                             "label": "刪除最愛" if show_delete else "加入最愛",
-                            "data": f"{'remove' if show_delete else 'add'}:{t['name']}"
+                            "data": f"{'remove' if show_delete else 'add'}:{t['name']}:{t['lat']}:{t['lon']}"
                         }
                     }
                 ],
@@ -242,7 +243,7 @@ def handle_text(event):
         osm_toilets = query_overpass_toilets(lat, lon)
         all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
         last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
-        msg = create_toilet_flex_messages(all_toilets)
+        msg = create_toilet_flex_messages(all_toilets, lat, lon)
         # 只回覆一次，並不會重複回應
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
@@ -251,7 +252,7 @@ def handle_text(event):
         if not favs:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
             return
-        msg = create_toilet_flex_messages(favs, show_delete=True)
+        msg = create_toilet_flex_messages(favs, user_locations[uid][0], user_locations[uid][1], show_delete=True)
         # 只回覆一次，並不會重複回應
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
 
@@ -260,14 +261,14 @@ def handle_postback(event):
     data = event.postback.data
     uid = event.source.user_id
     if data.startswith("add:"):
-        name = data[4:]
+        name, lat, lon = data[4:].split(":")
         toilet = last_toilet_by_user.get(uid)
-        if toilet and toilet['name'] == name:
+        if toilet and toilet['name'] == name and str(toilet['lat']) == lat and str(toilet['lon']) == lon:
             add_to_favorites(uid, toilet)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已收藏 {name}"))
     elif data.startswith("remove:"):
-        name = data[7:]
-        if remove_from_favorites(uid, name):
+        name, lat, lon = data[7:].split(":")
+        if remove_from_favorites(uid, name, lat, lon):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 已移除 {name}"))
         else:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="找不到該收藏"))
