@@ -1,4 +1,4 @@
-import os 
+import os
 import logging
 from math import radians, cos, sin, asin, sqrt
 import requests
@@ -230,31 +230,30 @@ def handle_text(event):
     text = event.message.text.lower()
     uid = event.source.user_id
 
-    if text == "附近廁所":
-        if uid not in user_locations:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
-            return
-        lat, lon = user_locations[uid]
-        local_toilets = query_local_toilets(lat, lon)
-        osm_toilets = query_overpass_toilets(lat, lon)
-        all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
-        last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
-        msg = create_toilet_flex_messages(all_toilets)
-        try:
-            line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
-        except LineBotApiError as e:
-            logging.error(f"LINE Bot API error: {e}")
+    try:
+        if text == "附近廁所":
+            if uid not in user_locations:
+                line_bot_api.push_message(uid, TextSendMessage(text="請先傳送位置"))
+                return
+            lat, lon = user_locations[uid]
+            local_toilets = query_local_toilets(lat, lon)
+            osm_toilets = query_overpass_toilets(lat, lon)
+            all_toilets = local_toilets + osm_toilets  # Combine local and OSM toilets
+            last_toilet_by_user[uid] = all_toilets[0] if all_toilets else None
+            msg = create_toilet_flex_messages(all_toilets)
+            line_bot_api.push_message(uid, FlexSendMessage("附近廁所", msg))
 
-    elif text == "我的最愛":
-        favs = get_user_favorites(uid)
-        if not favs:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
-            return
-        msg = create_toilet_flex_messages(favs, show_delete=True)
-        try:
-            line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
-        except LineBotApiError as e:
-            logging.error(f"LINE Bot API error: {e}")
+        elif text == "我的最愛":
+            favs = get_user_favorites(uid)
+            if not favs:
+                line_bot_api.push_message(uid, TextSendMessage(text="你尚未收藏任何廁所"))
+                return
+            msg = create_toilet_flex_messages(favs, show_delete=True)
+            line_bot_api.push_message(uid, FlexSendMessage("我的最愛", msg))
+
+    except LineBotApiError as e:
+        logging.error(f"LINE Bot API error: {e}")
+        line_bot_api.push_message(uid, TextSendMessage(text="處理錯誤，請稍後再試。"))
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
@@ -265,20 +264,20 @@ def handle_postback(event):
         toilet = last_toilet_by_user.get(uid)
         if toilet and toilet['name'] == name:
             add_to_favorites(uid, toilet)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已收藏 {name}"))
+            line_bot_api.push_message(uid, TextSendMessage(text=f"✅ 已收藏 {name}"))
     elif data.startswith("remove:"):
         name = data[7:]
         if remove_from_favorites(uid, name):
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 已移除 {name}"))
+            line_bot_api.push_message(uid, TextSendMessage(text=f"❌ 已移除 {name}"))
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="找不到該收藏"))
+            line_bot_api.push_message(uid, TextSendMessage(text="找不到該收藏"))
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location(event):
     uid = event.source.user_id
     lat, lon = event.message.latitude, event.message.longitude
     user_locations[uid] = (lat, lon)
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 位置已更新，點 '附近廁所' 查詢"))
+    line_bot_api.push_message(uid, TextSendMessage(text="✅ 位置已更新，點 '附近廁所' 查詢"))
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 10000))
