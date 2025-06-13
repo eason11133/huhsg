@@ -21,9 +21,13 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
 # Ensure favorites file exists
 def ensure_favorites_file():
-    if not os.path.exists("favorites.txt"):
-        with open("favorites.txt", "w", encoding="utf-8") as f:
-            pass  # Create an empty file if it doesn't exist
+    try:
+        if not os.path.exists("favorites.txt"):
+            with open("favorites.txt", "w", encoding="utf-8") as f:
+                pass  # Create an empty file if it doesn't exist
+    except Exception as e:
+        logging.error(f"Error creating favorites.txt: {e}")
+        raise
 
 # Ensure the favorites.txt file exists at the start
 ensure_favorites_file()
@@ -37,16 +41,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 # Calculate the distance using the Haversine formula
 def haversine(lat1, lon1, lat2, lon2):
-    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-    dlat, dlon = lat2 - lat1, lon2 - lon1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    return 2 * asin(sqrt(a)) * 6371000  # Return distance in meters
+    try:
+        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+        dlat, dlon = lat2 - lat1, lon2 - lon1
+        a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+        return 2 * asin(sqrt(a)) * 6371000  # Return distance in meters
+    except Exception as e:
+        logging.error(f"Error calculating distance: {e}")
+        return 0
 
 # Read toilets from text file
 def query_local_toilets(lat, lon):
     toilets = []
     try:
         toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
+        if not os.path.exists(toilets_file_path):
+            raise FileNotFoundError("toilets.txt not found.")
+        
         with open(toilets_file_path, 'r', encoding='utf-8') as file:
             next(file)
             for line in file:
@@ -69,6 +80,9 @@ def query_local_toilets(lat, lon):
                 })
     except FileNotFoundError:
         logging.error("toilets.txt not found.")
+        return []
+    except Exception as e:
+        logging.error(f"Error reading toilets.txt: {e}")
         return []
 
     return sorted(toilets, key=lambda x: x['distance'])
@@ -112,8 +126,11 @@ def query_overpass_toilets(lat, lon, radius=1000):
 
 # Add toilet to favorites using lat, lon as unique identifiers
 def add_to_favorites(user_id, toilet):
-    with open("favorites.txt", "a", encoding="utf-8") as file:
-        file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
+    try:
+        with open("favorites.txt", "a", encoding="utf-8") as file:
+            file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
+    except Exception as e:
+        logging.error(f"Error adding to favorites: {e}")
 
 # Remove toilet from favorites
 def remove_from_favorites(user_id, name, lat, lon):
@@ -148,6 +165,8 @@ def get_user_favorites(user_id):
                     })
     except FileNotFoundError:
         logging.error("favorites.txt not found.")
+    except Exception as e:
+        logging.error(f"Error reading favorites.txt: {e}")
     return favorites
 
 def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
