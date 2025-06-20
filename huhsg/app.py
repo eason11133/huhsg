@@ -170,7 +170,7 @@ def handle_text(event):
         places = query_overpass_places_with_toilets(lat, lon)
         
         if not places:  # 如果查詢結果為空，發送文字訊息
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="只能原地解放了"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="附近好像沒廁所ㄟ，只能原地解放了:)"))
             return
         
         msg = create_place_flex_messages(places, lat, lon)
