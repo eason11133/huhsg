@@ -62,7 +62,7 @@ def query_local_toilets(lat, lon):
         path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
         if not os.path.exists(path):
             raise FileNotFoundError("toilets.txt not found.")
-
+        
         with open(path, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
             next(reader, None)  # skip header
