@@ -247,11 +247,46 @@ def index():
 def handle_text(event):
     text = event.message.text.lower()
     uid = event.source.user_id
-    if event.reply_token in used_reply_tokens:
-        return
-    used_reply_tokens.add(event.reply_token)
 
-    if text == "附近廁所":
+    # 1. 新增廁所流程
+    if text.startswith("/新增廁所"):
+        pending_additions[uid] = {'step': 1}  # 記錄正在進行新增廁所的流程
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🔧 請提供廁所名稱："))
+        return
+
+    # 2. 如果使用者在新增廁所過程中
+    if uid in pending_additions:
+        step = pending_additions[uid]['step']
+
+        if step == 1:  # 收集廁所名稱
+            pending_additions[uid]['name'] = text
+            pending_additions[uid]['step'] = 2
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📍 請提供地址："))
+
+        elif step == 2:  # 收集地址
+            name = pending_additions[uid]['name']
+            address = text
+            lat, lon = geocode_address(address)
+
+            if lat is None or lon is None:
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認並重新輸入地址"))
+                return
+
+            # 寫入 toilets.txt
+            try:
+                with open("toilets.txt", "a", encoding="utf-8") as f:
+                    row = f"00000,0000000,未知里,USERADD,{name},{address},使用者補充,{lat},{lon},普通級,公共場所,未知,使用者,0\n"
+                    f.write(row)
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已成功新增廁所：{name}"))
+            except Exception as e:
+                logging.error(f"寫入廁所資料失敗：{e}")
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 寫入檔案失敗"))
+
+            # 清除使用者狀態
+            del pending_additions[uid]
+
+    # 3. 查詢附近廁所
+    elif text == "附近廁所":
         if uid not in user_locations:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
@@ -263,6 +298,7 @@ def handle_text(event):
         msg = create_toilet_flex_messages(toilets, lat, lon)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
+    # 4. 我的最愛
     elif text == "我的最愛":
         favs = get_user_favorites(uid)
         if not favs:
@@ -272,6 +308,7 @@ def handle_text(event):
         msg = create_toilet_flex_messages(favs, lat, lon, show_delete=True)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
 
+    # 5. 回饋
     elif text == "回饋":
         form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdsibz15enmZ3hJsQ9s3BiTXV_vFXLy0llLKlpc65vAoGo_hg/viewform?usp=sf_link"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"💡 請透過下列連結回報問題或提供意見：\n{form_url}"))
