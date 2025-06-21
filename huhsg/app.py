@@ -58,7 +58,7 @@ def haversine(lat1, lon1, lat2, lon2):
         logging.error(f"Error calculating distance: {e}")
         return 0
 
-# 查詢本地廁所（限300m內）
+# 查詢本地廁所（限500m內）
 def query_local_toilets(lat, lon):
     toilets = []
     try:
