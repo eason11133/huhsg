@@ -25,9 +25,6 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
-# 存儲正在進行新增廁所的使用者狀態
-pending_additions = {}
-
 # 建立 favorites.txt 如不存在
 def ensure_favorites_file():
     try:
@@ -45,6 +42,9 @@ MAX_TOILETS_REPLY = 5
 MAX_DISTANCE = 300  # 限制搜尋距離（公尺）
 used_reply_tokens = set()
 reply_token_expiry = timedelta(minutes=1)
+
+# 存儲正在進行新增廁所的使用者狀態
+pending_additions = {}
 
 # 計算 Haversine 距離
 def haversine(lat1, lon1, lat2, lon2):
@@ -135,48 +135,48 @@ def query_overpass_toilets(lat, lon, radius=300):
         })
     return sorted(toilets, key=lambda x: x["distance"])
 
-def geocode_address(address):
+# 加入最愛
+def add_to_favorites(user_id, toilet):
     try:
-        # 確保地址格式正確並進行 URL 編碼
-        formatted_address = ' '.join(address.split())  # 去除多餘空格並確保每部分有一個空格
-        address_encoded = requests.utils.quote(formatted_address)  # URL 編碼
-        url = f"https://nominatim.openstreetmap.org/search?format=json&q={address_encoded}"
-
-        headers = {
-            "User-Agent": "YourAppName/1.0 (http://yourwebsite.com/contact)"
-        }
-
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
-            logging.info(f"Nominatim API 回應：{response.text}")
-            data = response.json()
-            if data:
-                lat = float(data[0]['lat'])
-                lon = float(data[0]['lon'])
-                city = None
-
-                # 嘗試從回應中提取城市
-                for item in data[0]['address'].values():
-                    if item and isinstance(item, str):
-                        city = item
-                        break
-
-                logging.info(f"Geocoded address: {formatted_address} -> City: {city}, lat: {lat}, lon: {lon}")
-                return city, lat, lon
-            else:
-                logging.error(f"無法解析地址: {formatted_address}")
-                # 返回 None 而不停止其他流程
-                return None, None, None
-        else:
-            logging.error(f"API 請求失敗，狀態碼：{response.status_code}")
-            logging.error(f"回應內容：{response.text}")
-            # 返回 None 而不停止其他流程
-            return None, None, None
+        with open("favorites.txt", "a", encoding="utf-8") as file:
+            file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
     except Exception as e:
-        logging.error(f"解析地址出錯：{e}")
-        # 返回 None 而不停止其他流程
-        return None, None, None
+        logging.error(f"Error adding to favorites: {e}")
+
+# 移除最愛
+def remove_from_favorites(user_id, name, lat, lon):
+    try:
+        with open("favorites.txt", "r", encoding="utf-8") as file:
+            lines = file.readlines()
+        with open("favorites.txt", "w", encoding="utf-8") as file:
+            for line in lines:
+                data = line.strip().split(',')
+                if not (data[0] == user_id and data[1] == name and data[2] == str(lat) and data[3] == str(lon)):
+                    file.write(line)
+        return True
+    except Exception as e:
+        logging.error(f"Error removing favorite: {e}")
+        return False
+
+# 取得我的最愛
+def get_user_favorites(user_id):
+    favorites = []
+    try:
+        with open("favorites.txt", "r", encoding="utf-8") as file:
+            for line in file:
+                data = line.strip().split(',')
+                if data[0] == user_id:
+                    favorites.append({
+                        "name": data[1],
+                        "lat": float(data[2]),
+                        "lon": float(data[3]),
+                        "address": data[4],
+                        "type": "favorite",
+                        "distance": 0
+                    })
+    except Exception as e:
+        logging.error(f"Error reading favorites.txt: {e}")
+    return favorites
 
 # 建立 Flex Message（使用 Google Map）
 def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
@@ -272,7 +272,8 @@ def handle_text(event):
             city, lat, lon = geocode_address(address)
 
             if lat is None or lon is None:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認地址格式正確並重新輸入。請確保地址包含市區、區域、街道名及門牌號。"))
+                # 地址無法解析，讓用戶選擇是否重新輸入
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認地址格式正確並重新輸入。\n若不想繼續新增廁所，請輸入「取消」來取消操作。"))
                 return
 
             # 寫入 toilets.txt
@@ -288,7 +289,12 @@ def handle_text(event):
             # 清除使用者狀態
             del pending_additions[uid]
 
-    # 3. 查詢附近廁所
+        # 3. 用戶選擇取消新增廁所
+        elif text == "取消":
+            del pending_additions[uid]
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 新增廁所操作已取消，您可以繼續其他操作。"))
+
+    # 其他功能：查詢附近廁所、我的最愛等...
     elif text == "附近廁所":
         if uid not in user_locations:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
@@ -301,7 +307,6 @@ def handle_text(event):
         msg = create_toilet_flex_messages(toilets, lat, lon)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
-    # 4. 我的最愛
     elif text == "我的最愛":
         favs = get_user_favorites(uid)
         if not favs:
@@ -310,11 +315,6 @@ def handle_text(event):
         lat, lon = user_locations.get(uid, (0, 0))
         msg = create_toilet_flex_messages(favs, lat, lon, show_delete=True)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
-
-    # 5. 回饋
-    elif text == "回饋":
-        form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdsibz15enmZ3hJsQ9s3BiTXV_vFXLy0llLKlpc65vAoGo_hg/viewform?usp=sf_link"
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"💡 請透過下列連結回報問題或提供意見：\n{form_url}"))
 
 # Postback 處理
 @handler.add(PostbackEvent)
