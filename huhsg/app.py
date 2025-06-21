@@ -245,7 +245,15 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
         lat, lon = user_locations[uid]
-        toilets = query_local_toilets(lat, lon) + query_overpass_toilets(lat, lon)
+        # 查詢附近廁所（可以設定半徑為 300米）
+        toilets = query_local_toilets(lat, lon) + query_overpass_toilets(lat, lon, radius=300)
+
+        # 當沒有找到廁所時，顯示無廁所回應
+        if not toilets:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="附近找不到廁所，看來只能原地解放了"))
+            return
+        
+        # 顯示附近廁所的 Flex Message
         msg = create_toilet_flex_messages(toilets, lat, lon)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
@@ -260,6 +268,7 @@ def handle_text(event):
     elif text == "回饋":
         form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdsibz15enmZ3hJsQ9s3BiTXV_vFXLy0llLKlpc65vAoGo_hg/viewform?usp=sf_link"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"💡 請透過下列連結回報問題或提供意見：\n{form_url}"))
+
 
 # Handle Postback Event
 @handler.add(PostbackEvent)
