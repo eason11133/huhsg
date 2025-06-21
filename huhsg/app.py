@@ -48,64 +48,129 @@ def haversine(lat1, lon1, lat2, lon2):
         logging.error(f"Error calculating distance: {e}")
         return 0
 
-# Update query to include more places like restaurants, pubs, hospitals, stadiums, etc.
-def query_overpass_places_with_toilets(lat, lon, radius=1000):
+# Query local toilets from 'toilets.txt'
+def query_local_toilets(lat, lon):
+    toilets = []
+    try:
+        toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
+        if not os.path.exists(toilets_file_path):
+            raise FileNotFoundError("toilets.txt not found.")
+
+        logging.info(f"Found toilets.txt at: {toilets_file_path}")
+
+        with open(toilets_file_path, 'r', encoding='utf-8') as file:
+            next(file)  # Skip the header
+            for line in file:
+                logging.info(f"Reading line: {line.strip()}")  # Log each line
+                data = line.strip().split(',')
+                if len(data) != 13:  # Ensure there are 13 columns
+                    logging.warning(f"Skipping invalid line: {line.strip()}")
+                    continue
+                # Unpack data based on column positions
+                country, city, village, number, name, address, administration, latitude, longitude, grade, type2, type_, exec_, diaper = data
+                try:
+                    t_lat, t_lon = float(latitude), float(longitude)
+                except ValueError:
+                    logging.error(f"Invalid latitude or longitude: {latitude}, {longitude}")
+                    continue
+                dist = haversine(lat, lon, t_lat, t_lon)
+                toilets.append({
+                    "name": name or "無名稱",  # If name is empty, set it to "無名稱"
+                    "lat": t_lat,
+                    "lon": t_lon,
+                    "address": address or "",  # If address is empty, set it to an empty string
+                    "distance": dist,
+                    "type": type_  # Use type to indicate the toilet type
+                })
+    except Exception as e:
+        logging.error(f"Error reading toilets.txt: {e}")
+        return []
+
+    logging.info(f"Found {len(toilets)} toilets.")
+    return sorted(toilets, key=lambda x: x['distance'])
+
+# Query toilets from Overpass API (OSM)
+def query_overpass_toilets(lat, lon, radius=1000):
     url = "https://overpass-api.de/api/interpreter"
     query = f"""
     [out:json];
     (
       node["amenity"="toilets"](around:{radius},{lat},{lon});
-      node["shop"="convenience"](around:{radius},{lat},{lon});
-      node["amenity"="school"](around:{radius},{lat},{lon});
-      node["shop"="mall"](around:{radius},{lat},{lon});
-      node["amenity"="library"](around:{radius},{lat},{lon});
-      node["amenity"="restaurant"](around:{radius},{lat},{lon});
-      node["amenity"="pub"](around:{radius},{lat},{lon});
-      node["amenity"="hospital"](around:{radius},{lat},{lon});
-      node["amenity"="stadium"](around:{radius},{lat},{lon});
-      node["amenity"="bus_station"](around:{radius},{lat},{lon});
-      node["amenity"="train_station"](around:{radius},{lat},{lon});
-      node["amenity"="airport"](around:{radius},{lat},{lon});
+      way["amenity"="toilets"](around:{radius},{lat},{lon});
+      relation["amenity"="toilets"](around:{radius},{lat},{lon});
     );
     out center;
     """
     try:
-        resp = requests.post(url, data=query, headers={"User-Agent": "LineBotPlacesWithToilets/1.0"}, timeout=10)
+        resp = requests.post(url, data=query, headers={"User-Agent": "LineBotToiletFinder/1.0"}, timeout=10)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
         logging.error(f"Overpass API 查詢失敗：{e}")
         return []
 
-    places_with_toilets = []
+    toilets = []
     for elem in data.get("elements", []):
-        if "center" in elem:
-            t_lat, t_lon = elem["center"]["lat"], elem["center"]["lon"]
-        elif elem["type"] == "node":
+        if elem["type"] == "node":
             t_lat, t_lon = elem["lat"], elem["lon"]
+        elif "center" in elem:
+            t_lat, t_lon = elem["center"]["lat"], elem["center"]["lon"]
         else:
             continue
-        
+        dist = haversine(lat, lon, t_lat, t_lon)
         name = elem.get("tags", {}).get("name", "無名稱")
-        amenity_type = elem["tags"].get("amenity", "未知")
-        
-        # Check if the place has a toilet
-        if "toilets" in elem.get("tags", {}):
-            places_with_toilets.append({
-                "name": f"{name} (有廁所)",
-                "lat": t_lat,
-                "lon": t_lon,
-                "type": amenity_type,
-                "distance": haversine(lat, lon, t_lat, t_lon)
-            })
+        toilets.append({"name": name, "lat": t_lat, "lon": t_lon, "address": "", "distance": dist, "type": "osm"})
+    return sorted(toilets, key=lambda x: x["distance"])
 
-    return sorted(places_with_toilets, key=lambda x: x["distance"])
+# Add a toilet to favorites
+def add_to_favorites(user_id, toilet):
+    try:
+        with open("favorites.txt", "a", encoding="utf-8") as file:
+            file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
+    except Exception as e:
+        logging.error(f"Error adding to favorites: {e}")
 
-def create_place_flex_messages(places, user_lat, user_lon):
+# Remove a toilet from favorites
+def remove_from_favorites(user_id, name, lat, lon):
+    try:
+        with open("favorites.txt", "r", encoding="utf-8") as file:
+            lines = file.readlines()
+        with open("favorites.txt", "w", encoding="utf-8") as file:
+            for line in lines:
+                data = line.strip().split(',')
+                if not (data[0] == user_id and data[1] == name and data[2] == str(lat) and data[3] == str(lon)):
+                    file.write(line)
+        return True
+    except Exception as e:
+        logging.error(f"Error removing favorite: {e}")
+        return False
+
+# Get user favorites
+def get_user_favorites(user_id):
+    favorites = []
+    try:
+        with open("favorites.txt", "r", encoding="utf-8") as file:
+            for line in file:
+                data = line.strip().split(',')
+                if data[0] == user_id:
+                    favorites.append({
+                        "name": data[1],
+                        "lat": float(data[2]),
+                        "lon": float(data[3]),
+                        "address": data[4],
+                        "type": "favorite",
+                        "distance": 0
+                    })
+    except Exception as e:
+        logging.error(f"Error reading favorites.txt: {e}")
+    return favorites
+
+# Create Flex Message for toilets
+def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
     bubbles = []
-    for p in places[:MAX_TOILETS_REPLY]:
-        map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={p['lat']},{p['lon']}&zoom=15&size=600x300&markers={p['lat']},{p['lon']}&format=png"
-        dist = haversine(user_lat, user_lon, p['lat'], p['lon'])
+    for t in toilets[:MAX_TOILETS_REPLY]:
+        map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers={t['lat']},{t['lon']}&format=png"
+        dist = haversine(user_lat, user_lon, t['lat'], t['lon'])
         bubble = {
             "type": "bubble",
             "hero": {
@@ -119,9 +184,10 @@ def create_place_flex_messages(places, user_lat, user_lon):
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
-                    {"type": "text", "text": p['name'], "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": t['name'], "weight": "bold", "size": "lg"},
                     {"type": "text", "text": f"距離：{dist:.1f} 公尺", "size": "sm", "color": "#555555"},
-                    {"type": "text", "text": f"類型：{p['type']}", "size": "sm", "color": "#aaaaaa"}
+                    {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "wrap": True, "color": "#aaaaaa"},
+                    {"type": "text", "text": f"類型：{t['type']}", "size": "sm", "color": "#aaaaaa"}
                 ]
             },
             "footer": {
@@ -132,7 +198,17 @@ def create_place_flex_messages(places, user_lat, user_lon):
                         "type": "button",
                         "style": "primary",
                         "color": "#00BFFF",
-                        "action": URIAction(label="導航至該場所", uri=f"https://www.openstreetmap.org/?mlat={p['lat']}&mlon={p['lon']}")
+                        "action": URIAction(label="導航至最近廁所", uri=f"https://www.openstreetmap.org/?mlat={t['lat']}&mlon={t['lon']}")
+                    },
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "color": "#FFA07A",
+                        "action": {
+                            "type": "postback",
+                            "label": "刪除最愛" if show_delete else "加入最愛",
+                            "data": f"{'remove' if show_delete else 'add'}:{t['name']}:{t['lat']}:{t['lon']}"
+                        }
                     }
                 ]
             }
@@ -140,6 +216,7 @@ def create_place_flex_messages(places, user_lat, user_lon):
         bubbles.append(bubble)
     return {"type": "carousel", "contents": bubbles}
 
+# Webhook for LINE Bot
 @app.route("/callback", methods=["POST"])
 def callback():
     signature = request.headers.get("X-Line-Signature")
@@ -154,6 +231,7 @@ def callback():
 def index():
     return "Line Bot API is running!"
 
+# Handle Text Message
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text(event):
     text = event.message.text.lower()
@@ -167,36 +245,32 @@ def handle_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請先傳送位置"))
             return
         lat, lon = user_locations[uid]
-        places = query_overpass_places_with_toilets(lat, lon)
-        
-        if not places:  # 如果查詢結果為空，發送文字訊息
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="附近好像沒廁所ㄟ，只能原地解放了:)"))
-            return
-        
-        msg = create_place_flex_messages(places, lat, lon)
-        line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近有廁所的公共場所", msg))
+        toilets = query_local_toilets(lat, lon) + query_overpass_toilets(lat, lon)
+        msg = create_toilet_flex_messages(toilets, lat, lon)
+        line_bot_api.reply_message(event.reply_token, FlexSendMessage("附近廁所", msg))
 
     elif text == "我的最愛":
         favs = get_user_favorites(uid)
         if not favs:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="你尚未收藏任何廁所"))
             return
-        msg = create_place_flex_messages(favs, user_locations[uid][0], user_locations[uid][1])
+        msg = create_toilet_flex_messages(favs, user_locations[uid][0], user_locations[uid][1], show_delete=True)
         line_bot_api.reply_message(event.reply_token, FlexSendMessage("我的最愛", msg))
 
     elif text == "回饋":
         form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdsibz15enmZ3hJsQ9s3BiTXV_vFXLy0llLKlpc65vAoGo_hg/viewform?usp=sf_link"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"💡 請透過下列連結回報問題或提供意見：\n{form_url}"))
 
+# Handle Postback Event
 @handler.add(PostbackEvent)
 def handle_postback(event):
     uid = event.source.user_id
     data = event.postback.data
     action, name, lat, lon = data.split(":")
     if action == "add":
-        for place in query_overpass_places_with_toilets(*user_locations[uid]):
-            if place['name'] == name and str(place['lat']) == lat and str(place['lon']) == lon:
-                add_to_favorites(uid, place)
+        for toilet in query_local_toilets(*user_locations[uid]) + query_overpass_toilets(*user_locations[uid]):
+            if toilet['name'] == name and str(toilet['lat']) == lat and str(toilet['lon']) == lon:
+                add_to_favorites(uid, toilet)
                 break
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已收藏 {name}"))
     elif action == "remove":
@@ -205,6 +279,7 @@ def handle_postback(event):
         else:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="找不到該收藏"))
 
+# Handle Location Message
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location(event):
     uid = event.source.user_id
