@@ -138,12 +138,13 @@ def query_overpass_toilets(lat, lon, radius=300):
 # geocode 地址轉換為經緯度（使用 OpenStreetMap Nominatim）
 def geocode_address(address):
     try:
-        address = requests.utils.quote(address)
-        url = f"https://nominatim.openstreetmap.org/search?format=json&q={address}"
+        # 確保地址格式正確並進行 URL 編碼
+        formatted_address = ' '.join(address.split())  # 去除多餘空格並確保每部分有一個空格
+        address_encoded = requests.utils.quote(formatted_address)  # URL 編碼
+        url = f"https://nominatim.openstreetmap.org/search?format=json&q={address_encoded}"
 
-        # 在請求中加入自定義的 User-Agent
         headers = {
-            "User-Agent": "YourAppName/1.0 (http://yourwebsite.com/contact)"  # 替換為您的應用名稱與聯繫信息
+            "User-Agent": "YourAppName/1.0 (http://yourwebsite.com/contact)"
         }
 
         response = requests.get(url, headers=headers)
@@ -155,17 +156,17 @@ def geocode_address(address):
                 lat = float(data[0]['lat'])
                 lon = float(data[0]['lon'])
                 city = None
-                
+
                 # 嘗試從回應中提取城市
                 for item in data[0]['address'].values():
                     if item and isinstance(item, str):
                         city = item
                         break
 
-                logging.info(f"Geocoded address: {address} -> City: {city}, lat: {lat}, lon: {lon}")
+                logging.info(f"Geocoded address: {formatted_address} -> City: {city}, lat: {lat}, lon: {lon}")
                 return city, lat, lon
             else:
-                logging.error(f"無法解析地址: {address}")
+                logging.error(f"無法解析地址: {formatted_address}")
                 return None, None, None
         else:
             logging.error(f"API 請求失敗，狀態碼：{response.status_code}")
