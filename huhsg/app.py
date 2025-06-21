@@ -62,7 +62,7 @@ def haversine(lat1, lon1, lat2, lon2):
 def query_local_toilets(lat, lon):
     toilets = []
     try:
-        path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
+        path = 'D:/school/huhsg/toilets.txt'  # 更改檔案路徑為實際路徑
         if not os.path.exists(path):
             raise FileNotFoundError("toilets.txt not found.")
         
