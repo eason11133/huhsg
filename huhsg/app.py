@@ -178,6 +178,22 @@ def get_user_favorites(user_id):
         logging.error(f"Error reading favorites.txt: {e}")
     return favorites
 
+# geocode 地址轉換為經緯度
+def geocode_address(address):
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?format=json&q={address}"
+        response = requests.get(url)
+        data = response.json()
+        if data:
+            lat = float(data[0]['lat'])
+            lon = float(data[0]['lon'])
+            return lat, lon
+        else:
+            return None, None
+    except Exception as e:
+        logging.error(f"Error geocoding address: {e}")
+        return None, None
+
 # 建立 Flex Message（使用 Google Map）
 def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
     bubbles = []
@@ -252,7 +268,7 @@ def handle_text(event):
     uid = event.source.user_id
 
     # 1. 新增廁所流程
-    if text.startswith("新增廁所"):
+    if text.startswith("/新增廁所"):
         pending_additions[uid] = {'step': 1}  # 記錄正在進行新增廁所的流程
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🔧 請提供廁所名稱："))
         return
