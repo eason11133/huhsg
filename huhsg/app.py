@@ -14,6 +14,9 @@ from linebot.models import (
 )
 from datetime import timedelta
 
+# 定義 pending_additions 以保存使用者的新增廁所狀態
+pending_additions = {}
+
 # 載入 .env
 load_dotenv()
 
@@ -249,7 +252,7 @@ def handle_text(event):
     uid = event.source.user_id
 
     # 1. 新增廁所流程
-    if text.startswith("/新增廁所"):
+    if text.startswith("新增廁所"):
         pending_additions[uid] = {'step': 1}  # 記錄正在進行新增廁所的流程
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🔧 請提供廁所名稱："))
         return
