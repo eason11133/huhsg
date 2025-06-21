@@ -1,4 +1,4 @@
-import os 
+import os
 import csv
 import logging
 import requests
@@ -175,58 +175,6 @@ def geocode_address(address):
     except Exception as e:
         logging.error(f"解析地址出錯：{e}")
         return None, None, None
-
-# 建立 Flex Message（使用 Google Map）
-def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
-    bubbles = []
-    for t in toilets[:MAX_TOILETS_REPLY]:
-        dist = haversine(user_lat, user_lon, t['lat'], t['lon'])
-        map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={t['lat']},{t['lon']}&zoom=15&size=600x300&markers={t['lat']},{t['lon']}&format=png"
-        google_map = f"https://www.google.com/maps/search/?api=1&query={t['lat']},{t['lon']}"
-        bubble = {
-            "type": "bubble",
-            "hero": {
-                "type": "image",
-                "url": map_url,
-                "size": "full",
-                "aspectMode": "cover",
-                "aspectRatio": "20:13"
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {"type": "text", "text": t['name'], "weight": "bold", "size": "lg"},
-                    {"type": "text", "text": f"距離：{dist:.1f} 公尺", "size": "sm", "color": "#555555"},
-                    {"type": "text", "text": f"地址：{t['address']}", "size": "sm", "wrap": True, "color": "#aaaaaa"},
-                    {"type": "text", "text": f"類型：{t['type']}", "size": "sm", "color": "#aaaaaa"}
-                ]
-            },
-            "footer": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "button",
-                        "style": "primary",
-                        "color": "#00BFFF",
-                        "action": URIAction(label="導航至最近廁所", uri=google_map)
-                    },
-                    {
-                        "type": "button",
-                        "style": "primary",
-                        "color": "#FFA07A",
-                        "action": {
-                            "type": "postback",
-                            "label": "刪除最愛" if show_delete else "加入最愛",
-                            "data": f"{'remove' if show_delete else 'add'}:{t['name']}:{t['lat']}:{t['lon']}"
-                        }
-                    }
-                ]
-            }
-        }
-        bubbles.append(bubble)
-    return {"type": "carousel", "contents": bubbles}
 
 # Webhook callback
 @app.route("/callback", methods=["POST"])
