@@ -14,9 +14,6 @@ from linebot.models import (
 )
 from datetime import timedelta
 
-# 定義 pending_additions 以保存使用者的新增廁所狀態
-pending_additions = {}
-
 # 載入 .env
 load_dotenv()
 
@@ -140,7 +137,13 @@ def geocode_address(address):
     try:
         address = requests.utils.quote(address)
         url = f"https://nominatim.openstreetmap.org/search?format=json&q={address}"
-        response = requests.get(url)
+
+        # 在請求中加入自定義的 User-Agent
+        headers = {
+            "User-Agent": "YourAppName/1.0 (http://yourwebsite.com/contact)"  # 替換為您的應用名稱與聯繫信息
+        }
+
+        response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             logging.info(f"Nominatim API 回應：{response.text}")
@@ -255,7 +258,7 @@ def handle_text(event):
         if step == 1:  # 收集廁所名稱
             pending_additions[uid]['name'] = text
             pending_additions[uid]['step'] = 2
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📍 請提供地址："))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📍 請提供地址（格式：市區、區域、街道名、門牌號）："))
 
         elif step == 2:  # 收集地址
             name = pending_additions[uid]['name']
