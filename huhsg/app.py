@@ -2,7 +2,6 @@ import os
 import csv
 import logging
 import requests
-import googlemaps
 from math import radians, cos, sin, asin, sqrt
 from flask import Flask, request, abort
 from dotenv import load_dotenv
@@ -136,75 +135,39 @@ def query_overpass_toilets(lat, lon, radius=300):
         })
     return sorted(toilets, key=lambda x: x["distance"])
 
-# 加入最愛
-def add_to_favorites(user_id, toilet):
-    try:
-        with open("favorites.txt", "a", encoding="utf-8") as file:
-            file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
-    except Exception as e:
-        logging.error(f"Error adding to favorites: {e}")
-
-# 移除最愛
-def remove_from_favorites(user_id, name, lat, lon):
-    try:
-        with open("favorites.txt", "r", encoding="utf-8") as file:
-            lines = file.readlines()
-        with open("favorites.txt", "w", encoding="utf-8") as file:
-            for line in lines:
-                data = line.strip().split(',')
-                if not (data[0] == user_id and data[1] == name and data[2] == str(lat) and data[3] == str(lon)):
-                    file.write(line)
-        return True
-    except Exception as e:
-        logging.error(f"Error removing favorite: {e}")
-        return False
-
-# 取得我的最愛
-def get_user_favorites(user_id):
-    favorites = []
-    try:
-        with open("favorites.txt", "r", encoding="utf-8") as file:
-            for line in file:
-                data = line.strip().split(',')
-                if data[0] == user_id:
-                    favorites.append({
-                        "name": data[1],
-                        "lat": float(data[2]),
-                        "lon": float(data[3]),
-                        "address": data[4],
-                        "type": "favorite",
-                        "distance": 0
-                    })
-    except Exception as e:
-        logging.error(f"Error reading favorites.txt: {e}")
-    return favorites
-
-# geocode 地址轉換為經緯度
+# geocode 地址轉換為經緯度（使用 OpenStreetMap Nominatim）
 def geocode_address(address):
     try:
         address = requests.utils.quote(address)
         url = f"https://nominatim.openstreetmap.org/search?format=json&q={address}"
         response = requests.get(url)
-        
-        # 檢查回應內容
+
         if response.status_code == 200:
-            logging.info(f"Nominatim API 回應：{response.text}")  # 打印回應內容
+            logging.info(f"Nominatim API 回應：{response.text}")
             data = response.json()
             if data:
                 lat = float(data[0]['lat'])
                 lon = float(data[0]['lon'])
-                logging.info(f"Geocoded address: {address} -> lat: {lat}, lon: {lon}")
-                return lat, lon
+                city = None
+                
+                # 嘗試從回應中提取城市
+                for item in data[0]['address'].values():
+                    if item and isinstance(item, str):
+                        city = item
+                        break
+
+                logging.info(f"Geocoded address: {address} -> City: {city}, lat: {lat}, lon: {lon}")
+                return city, lat, lon
             else:
                 logging.error(f"無法解析地址: {address}")
-                return None, None
+                return None, None, None
         else:
             logging.error(f"API 請求失敗，狀態碼：{response.status_code}")
             logging.error(f"回應內容：{response.text}")
-            return None, None
+            return None, None, None
     except Exception as e:
         logging.error(f"解析地址出錯：{e}")
-        return None, None
+        return None, None, None
 
 # 建立 Flex Message（使用 Google Map）
 def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
@@ -297,7 +260,7 @@ def handle_text(event):
         elif step == 2:  # 收集地址
             name = pending_additions[uid]['name']
             address = text
-            lat, lon = geocode_address(address)
+            city, lat, lon = geocode_address(address)
 
             if lat is None or lon is None:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認並重新輸入地址"))
