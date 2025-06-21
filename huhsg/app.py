@@ -25,6 +25,9 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
+# 存儲正在進行新增廁所的使用者狀態
+pending_additions = {}
+
 # 建立 favorites.txt 如不存在
 def ensure_favorites_file():
     try:
