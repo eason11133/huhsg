@@ -216,6 +216,25 @@ def geocode_address(address, user_name):
         logging.error(f"解析地址出錯：{e}")
         return None, None, None
 
+# 寫入 toilets.txt，將新廁所資料放在檔案的第一筆
+def add_to_toilets_file(name, address, lat, lon):
+    try:
+        # 讀取現有的 toilets.txt 檔案內容
+        with open("toilets.txt", "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        # 新增的廁所資料
+        new_row = f"00000,0000000,未知里,USERADD,{name},{address},使用者補充,{lat},{lon},普通級,公共場所,未知,使用者,0\n"
+
+        # 將新資料放在檔案的第一筆，並重新寫入檔案
+        with open("toilets.txt", "w", encoding="utf-8") as f:
+            f.write(new_row)  # 寫入新的廁所資料
+            f.writelines(lines)  # 寫入原檔案中的其他內容
+
+        logging.info(f"成功將廁所 {name} 新增至檔案並放置於第一筆")
+    except Exception as e:
+        logging.error(f"寫入檔案失敗：{e}")
+
 # 建立 Flex Message（使用 Google Map）
 def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
     bubbles = []
@@ -324,14 +343,11 @@ def handle_text(event):
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認地址格式正確並重新輸入。\n若不想繼續新增廁所，請輸入「取消」來取消操作。"))
                 return
 
-            # 寫入 toilets.txt
+            # 寫入 toilets.txt 並將新資料放在第一筆
             try:
-                with open("toilets.txt", "a", encoding="utf-8") as f:
-                    row = f"00000,0000000,未知里,USERADD,{name},{address},使用者補充,{lat},{lon},普通級,公共場所,未知,使用者,0\n"
-                    f.write(row)
+                add_to_toilets_file(name, address, lat, lon)  # 確保經緯度資料被加入
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已成功新增廁所：{name}"))
             except Exception as e:
-                logging.error(f"寫入廁所資料失敗：{e}")
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 寫入檔案失敗"))
 
             # 清除使用者狀態
