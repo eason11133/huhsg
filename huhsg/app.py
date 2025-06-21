@@ -6,7 +6,7 @@ from math import radians, cos, sin, asin, sqrt
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError, LineBotApiError
+from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
     FlexSendMessage, PostbackEvent, TextSendMessage,
@@ -39,7 +39,7 @@ ensure_favorites_file()
 
 user_locations = {}
 MAX_TOILETS_REPLY = 5
-MAX_DISTANCE = 300  # 限制搜尋距離（公尺）
+MAX_DISTANCE = 500  # 限制搜尋距離（公尺）
 used_reply_tokens = set()
 reply_token_expiry = timedelta(minutes=1)
 
@@ -62,11 +62,12 @@ def haversine(lat1, lon1, lat2, lon2):
 def query_local_toilets(lat, lon):
     toilets = []
     try:
-        path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
-        if not os.path.exists(path):
+        # 使用完整路徑
+        toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
+        if not os.path.exists(toilets_file_path):
             raise FileNotFoundError("toilets.txt not found.")
         
-        with open(path, 'r', encoding='utf-8') as file:
+        with open(toilets_file_path, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
             next(reader, None)  # skip header
 
@@ -96,7 +97,7 @@ def query_local_toilets(lat, lon):
     return sorted(toilets, key=lambda x: x['distance'])
 
 # 查詢 OSM API
-def query_overpass_toilets(lat, lon, radius=300):
+def query_overpass_toilets(lat, lon, radius=500):
     url = "https://overpass-api.de/api/interpreter"
     query = f"""
     [out:json];
@@ -220,14 +221,15 @@ def geocode_address(address, user_name):
 def add_to_toilets_file(name, address, lat, lon):
     try:
         # 讀取現有的 toilets.txt 檔案內容
-        with open("toilets.txt", "r", encoding="utf-8") as f:
+        toilets_file_path = os.path.join(os.path.dirname(__file__), 'toilets.txt')
+        with open(toilets_file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         # 新增的廁所資料
         new_row = f"00000,0000000,未知里,USERADD,{name},{address},使用者補充,{lat},{lon},普通級,公共場所,未知,使用者,0\n"
 
         # 將新資料放在檔案的第一筆，並重新寫入檔案
-        with open("toilets.txt", "w", encoding="utf-8") as f:
+        with open(toilets_file_path, "w", encoding="utf-8") as f:
             f.write(new_row)  # 寫入新的廁所資料
             f.writelines(lines)  # 寫入原檔案中的其他內容
 
@@ -250,6 +252,56 @@ def callback():
 def index():
     return "Line Bot API is running!"
 
+# 文字訊息處理
+@handler.add(MessageEvent, message=TextMessage)
+def handle_text(event):
+    text = event.message.text.lower()
+    uid = event.source.user_id
+
+    # 1. 新增廁所流程
+    if text.startswith("新增廁所"):
+        pending_additions[uid] = {'step': 1}  # 記錄正在進行新增廁所的流程
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🔧 請提供廁所名稱："))
+        return
+
+    # 2. 如果使用者在新增廁所過程中
+    if uid in pending_additions:
+        step = pending_additions[uid]['step']
+
+        if step == 1:  # 收集廁所名稱
+            if text == "取消":
+                del pending_additions[uid]  # 清除正在進行的新增廁所流程
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 新增廁所操作已取消，您可以繼續其他操作。"))
+                return
+            pending_additions[uid]['name'] = text
+            pending_additions[uid]['step'] = 2
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📍 請提供地址（格式：市區、區域、街道名、門牌號，例如：新北市三重區五華街282號）："))
+
+        elif step == 2:  # 收集地址
+            if text == "取消":
+                del pending_additions[uid]  # 清除正在進行的新增廁所流程
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 新增廁所操作已取消，您可以繼續其他操作。"))
+                return
+
+            name = pending_additions[uid]['name']
+            address = text
+            # 使用用戶名稱作為name
+            city, lat, lon = geocode_address(address, name)
+
+            if lat is None or lon is None:
+                # 地址無法解析，讓用戶選擇是否重新輸入
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認地址格式正確並重新輸入。\n若不想繼續新增廁所，請輸入「取消」來取消操作。"))
+                return
+
+            # 寫入 toilets.txt 並將新資料放在第一筆
+            try:
+                add_to_toilets_file(name, address, lat, lon)  # 確保經緯度資料被加入
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 已成功新增廁所：{name}"))
+            except Exception as e:
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 寫入檔案失敗"))
+
+            # 清除使用者狀態
+            del pending_additions[uid]
 # 文字訊息處理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text(event):
