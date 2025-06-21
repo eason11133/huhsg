@@ -1,4 +1,4 @@
-import os
+import os 
 import csv
 import logging
 import requests
@@ -42,7 +42,7 @@ ensure_favorites_file()
 
 user_locations = {}
 MAX_TOILETS_REPLY = 5
-MAX_DISTANCE = 300  # 限制搜尋距離（公尺）
+MAX_DISTANCE = 300  # 限制搜尋距離（公尺） 
 used_reply_tokens = set()
 reply_token_expiry = timedelta(minutes=1)
 
@@ -261,7 +261,7 @@ def handle_text(event):
         if step == 1:  # 收集廁所名稱
             pending_additions[uid]['name'] = text
             pending_additions[uid]['step'] = 2
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📍 請提供地址（格式：市區、區域、街道名、門牌號）："))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📍 請提供地址（格式：市區、區域、街道名、門牌號，例如：新北市三重區五華街282號）："))
 
         elif step == 2:  # 收集地址
             name = pending_additions[uid]['name']
@@ -269,7 +269,7 @@ def handle_text(event):
             city, lat, lon = geocode_address(address)
 
             if lat is None or lon is None:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認並重新輸入地址"))
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 地址無法解析，請確認地址格式正確並重新輸入。請確保地址包含市區、區域、街道名及門牌號。"))
                 return
 
             # 寫入 toilets.txt
