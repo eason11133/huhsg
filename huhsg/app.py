@@ -25,11 +25,15 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
+# 絕對路徑設定
+TOILETS_FILE_PATH = 'D:/school/huhsg/toilets.txt'  # 更改檔案路徑為實際路徑
+FAVORITES_FILE_PATH = 'D:/school/huhsg/favorites.txt'  # 新增 favorites.txt 檔案路徑
+
 # 建立 favorites.txt 如不存在
 def ensure_favorites_file():
     try:
-        if not os.path.exists("favorites.txt"):
-            with open("favorites.txt", "w", encoding="utf-8"):
+        if not os.path.exists(FAVORITES_FILE_PATH):
+            with open(FAVORITES_FILE_PATH, "w", encoding="utf-8"):
                 pass
     except Exception as e:
         logging.error(f"Error creating favorites.txt: {e}")
@@ -62,11 +66,10 @@ def haversine(lat1, lon1, lat2, lon2):
 def query_local_toilets(lat, lon):
     toilets = []
     try:
-        path = 'D:/school/huhsg/toilets.txt'  # 更改檔案路徑為實際路徑
-        if not os.path.exists(path):
-            raise FileNotFoundError("toilets.txt not found.")
+        if not os.path.exists(TOILETS_FILE_PATH):
+            raise FileNotFoundError(f"{TOILETS_FILE_PATH} 不存在")
         
-        with open(path, 'r', encoding='utf-8') as file:
+        with open(TOILETS_FILE_PATH, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
             next(reader, None)  # skip header
 
@@ -87,10 +90,11 @@ def query_local_toilets(lat, lon):
                             "distance": dist,
                             "type": type_
                         })
-                except:
+                except Exception as e:
+                    logging.error(f"Error processing row: {e}")
                     continue
     except Exception as e:
-        logging.error(f"Error reading toilets.txt: {e}")
+        logging.error(f"Error reading {TOILETS_FILE_PATH}: {e}")
         return []
 
     return sorted(toilets, key=lambda x: x['distance'])
@@ -138,7 +142,7 @@ def query_overpass_toilets(lat, lon, radius=500):
 # 加入最愛
 def add_to_favorites(user_id, toilet):
     try:
-        with open("favorites.txt", "a", encoding="utf-8") as file:
+        with open(FAVORITES_FILE_PATH, "a", encoding="utf-8") as file:
             file.write(f"{user_id},{toilet['name']},{toilet['lat']},{toilet['lon']},{toilet['address']}\n")
     except Exception as e:
         logging.error(f"Error adding to favorites: {e}")
@@ -146,9 +150,9 @@ def add_to_favorites(user_id, toilet):
 # 移除最愛
 def remove_from_favorites(user_id, name, lat, lon):
     try:
-        with open("favorites.txt", "r", encoding="utf-8") as file:
+        with open(FAVORITES_FILE_PATH, "r", encoding="utf-8") as file:
             lines = file.readlines()
-        with open("favorites.txt", "w", encoding="utf-8") as file:
+        with open(FAVORITES_FILE_PATH, "w", encoding="utf-8") as file:
             for line in lines:
                 data = line.strip().split(',')
                 if not (data[0] == user_id and data[1] == name and data[2] == str(lat) and data[3] == str(lon)):
@@ -162,7 +166,7 @@ def remove_from_favorites(user_id, name, lat, lon):
 def get_user_favorites(user_id):
     favorites = []
     try:
-        with open("favorites.txt", "r", encoding="utf-8") as file:
+        with open(FAVORITES_FILE_PATH, "r", encoding="utf-8") as file:
             for line in file:
                 data = line.strip().split(',')
                 if data[0] == user_id:
@@ -175,7 +179,7 @@ def get_user_favorites(user_id):
                         "distance": 0
                     })
     except Exception as e:
-        logging.error(f"Error reading favorites.txt: {e}")
+        logging.error(f"Error reading {FAVORITES_FILE_PATH}: {e}")
     return favorites
 
 # geocode 地址轉換為經緯度（使用 OpenStreetMap Nominatim）
@@ -219,15 +223,17 @@ def geocode_address(address, user_name):
 # 寫入 toilets.txt，將新廁所資料放在檔案的第一筆
 def add_to_toilets_file(name, address, lat, lon):
     try:
-        # 讀取現有的 toilets.txt 檔案內容
-        with open("toilets.txt", "r", encoding="utf-8", errors='ignore') as f:
+        if not os.path.exists(TOILETS_FILE_PATH):
+            logging.error(f"{TOILETS_FILE_PATH} 不存在")
+            return
+
+        with open(TOILETS_FILE_PATH, "r", encoding="utf-8", errors='ignore') as f:
             lines = f.readlines()
 
         # 新增的廁所資料
         new_row = f"00000,0000000,未知里,USERADD,{name},{address},使用者補充,{lat},{lon},普通級,公共場所,未知,使用者,0\n"
 
-        # 將新資料放在檔案的第一筆，並重新寫入檔案
-        with open("toilets.txt", "w", encoding="utf-8", errors='ignore') as f:
+        with open(TOILETS_FILE_PATH, "w", encoding="utf-8", errors='ignore') as f:
             f.write(new_row)  # 寫入新的廁所資料
             f.writelines(lines)  # 寫入原檔案中的其他內容
 
