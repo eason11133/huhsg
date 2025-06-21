@@ -301,11 +301,20 @@ def handle_text(event):
         step = pending_additions[uid]['step']
 
         if step == 1:  # 收集廁所名稱
+            if text == "取消":
+                del pending_additions[uid]  # 清除正在進行的新增廁所流程
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 新增廁所操作已取消，您可以繼續其他操作。"))
+                return
             pending_additions[uid]['name'] = text
             pending_additions[uid]['step'] = 2
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📍 請提供地址（格式：市區、區域、街道名、門牌號，例如：新北市三重區五華街282號）："))
 
         elif step == 2:  # 收集地址
+            if text == "取消":
+                del pending_additions[uid]  # 清除正在進行的新增廁所流程
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 新增廁所操作已取消，您可以繼續其他操作。"))
+                return
+
             name = pending_additions[uid]['name']
             address = text
             city, lat, lon = geocode_address(address)
@@ -327,11 +336,6 @@ def handle_text(event):
 
             # 清除使用者狀態
             del pending_additions[uid]
-
-        # 3. 用戶選擇取消新增廁所
-        elif text == "取消":
-            del pending_additions[uid]
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 新增廁所操作已取消，您可以繼續其他操作。"))
 
     # 回饋功能
     elif text == "回饋":
