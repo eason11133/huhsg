@@ -2,6 +2,7 @@ import os
 import csv
 import logging
 import requests
+import googlemaps
 from math import radians, cos, sin, asin, sqrt
 from flask import Flask, request, abort
 from dotenv import load_dotenv
@@ -181,17 +182,28 @@ def get_user_favorites(user_id):
 # geocode 地址轉換為經緯度
 def geocode_address(address):
     try:
+        address = requests.utils.quote(address)
         url = f"https://nominatim.openstreetmap.org/search?format=json&q={address}"
         response = requests.get(url)
-        data = response.json()
-        if data:
-            lat = float(data[0]['lat'])
-            lon = float(data[0]['lon'])
-            return lat, lon
+        
+        # 檢查回應內容
+        if response.status_code == 200:
+            logging.info(f"Nominatim API 回應：{response.text}")  # 打印回應內容
+            data = response.json()
+            if data:
+                lat = float(data[0]['lat'])
+                lon = float(data[0]['lon'])
+                logging.info(f"Geocoded address: {address} -> lat: {lat}, lon: {lon}")
+                return lat, lon
+            else:
+                logging.error(f"無法解析地址: {address}")
+                return None, None
         else:
+            logging.error(f"API 請求失敗，狀態碼：{response.status_code}")
+            logging.error(f"回應內容：{response.text}")
             return None, None
     except Exception as e:
-        logging.error(f"Error geocoding address: {e}")
+        logging.error(f"解析地址出錯：{e}")
         return None, None
 
 # 建立 Flex Message（使用 Google Map）
