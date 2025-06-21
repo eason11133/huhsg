@@ -32,6 +32,9 @@ FAVORITES_FILE_PATH = 'D:/school/huhsg/favorites.txt'  # 新增 favorites.txt �
 # 建立 favorites.txt 如不存在
 def ensure_favorites_file():
     try:
+        # 確保目錄存在
+        os.makedirs(os.path.dirname(FAVORITES_FILE_PATH), exist_ok=True)
+        
         if not os.path.exists(FAVORITES_FILE_PATH):
             with open(FAVORITES_FILE_PATH, "w", encoding="utf-8"):
                 pass
