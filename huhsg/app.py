@@ -178,6 +178,45 @@ def get_user_favorites(user_id):
         logging.error(f"Error reading favorites.txt: {e}")
     return favorites
 
+# geocode 地址轉換為經緯度（使用 OpenStreetMap Nominatim）
+def geocode_address(address):
+    try:
+        formatted_address = ' '.join(address.split())  # 去除多餘空格並確保每部分有一個空格
+        address_encoded = requests.utils.quote(formatted_address)  # URL 編碼
+        url = f"https://nominatim.openstreetmap.org/search?format=json&q={address_encoded}"
+
+        headers = {
+            "User-Agent": "YourAppName/1.0 (http://yourwebsite.com/contact)"
+        }
+
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            logging.info(f"Nominatim API 回應：{response.text}")
+            data = response.json()
+            if data:
+                lat = float(data[0]['lat'])
+                lon = float(data[0]['lon'])
+                city = None
+
+                for item in data[0]['address'].values():
+                    if item and isinstance(item, str):
+                        city = item
+                        break
+
+                logging.info(f"Geocoded address: {formatted_address} -> City: {city}, lat: {lat}, lon: {lon}")
+                return city, lat, lon
+            else:
+                logging.error(f"無法解析地址: {formatted_address}")
+                return None, None, None
+        else:
+            logging.error(f"API 請求失敗，狀態碼：{response.status_code}")
+            logging.error(f"回應內容：{response.text}")
+            return None, None, None
+    except Exception as e:
+        logging.error(f"解析地址出錯：{e}")
+        return None, None, None
+
 # 建立 Flex Message（使用 Google Map）
 def create_toilet_flex_messages(toilets, user_lat, user_lon, show_delete=False):
     bubbles = []
