@@ -179,7 +179,7 @@ def get_user_favorites(user_id):
     return favorites
 
 # geocode 地址轉換為經緯度（使用 OpenStreetMap Nominatim）
-def geocode_address(address):
+def geocode_address(address, user_name):
     try:
         formatted_address = ' '.join(address.split())  # 去除多餘空格並確保每部分有一個空格
         address_encoded = requests.utils.quote(formatted_address)  # URL 編碼
@@ -197,15 +197,14 @@ def geocode_address(address):
             if data:
                 lat = float(data[0]['lat'])
                 lon = float(data[0]['lon'])
-                city = None
+                name = data[0].get('name', '')  # 如果name為空，保持空白
 
-                for item in data[0]['address'].values():
-                    if item and isinstance(item, str):
-                        city = item
-                        break
+                # 如果name為空，使用輸入的廁所名稱
+                if not name:
+                    name = user_name
 
-                logging.info(f"Geocoded address: {formatted_address} -> City: {city}, lat: {lat}, lon: {lon}")
-                return city, lat, lon
+                logging.info(f"Geocoded address: {formatted_address} -> lat: {lat}, lon: {lon}, name: {name}")
+                return name, lat, lon
             else:
                 logging.error(f"無法解析地址: {formatted_address}")
                 return None, None, None
@@ -317,7 +316,8 @@ def handle_text(event):
 
             name = pending_additions[uid]['name']
             address = text
-            city, lat, lon = geocode_address(address)
+            # 使用用戶名稱作為name
+            city, lat, lon = geocode_address(address, name)
 
             if lat is None or lon is None:
                 # 地址無法解析，讓用戶選擇是否重新輸入
