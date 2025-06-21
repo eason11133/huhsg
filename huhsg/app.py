@@ -61,11 +61,16 @@ def query_local_toilets(lat, lon):
         with open(toilets_file_path, 'r', encoding='utf-8') as file:
             next(file)  # Skip the header
             for line in file:
-                logging.info(f"Reading line: {line.strip()}")  # Log each line
-                data = line.strip().split(',')
-                if len(data) != 13:  # Ensure there are 13 columns
-                    logging.warning(f"Skipping invalid line: {line.strip()}")
+                line = line.strip()  # Remove leading and trailing spaces
+                logging.info(f"Reading line: {line}")  # Log each line
+                data = line.split(',')
+                # Ensure there are 13 columns
+                if len(data) != 13:
+                    logging.warning(f"Skipping invalid line: {line}")
                     continue
+                # Clean up the data (removing any leading/trailing spaces or special characters)
+                data = [field.strip() for field in data]
+                
                 # Unpack data based on column positions
                 country, city, village, number, name, address, administration, latitude, longitude, grade, type2, type_, exec_, diaper = data
                 try:
@@ -88,6 +93,7 @@ def query_local_toilets(lat, lon):
 
     logging.info(f"Found {len(toilets)} toilets.")
     return sorted(toilets, key=lambda x: x['distance'])
+
 
 # Query toilets from Overpass API (OSM)
 def query_overpass_toilets(lat, lon, radius=1000):
