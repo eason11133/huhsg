@@ -294,6 +294,11 @@ def handle_text(event):
             del pending_additions[uid]
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 新增廁所操作已取消，您可以繼續其他操作。"))
 
+    # 回饋功能
+    elif text == "回饋":
+        form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdsibz15enmZ3hJsQ9s3BiTXV_vFXLy0llLKlpc65vAoGo_hg/viewform?usp=sf_link"
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"💡 請透過下列連結回報問題或提供意見：\n{form_url}"))
+
     # 其他功能：查詢附近廁所、我的最愛等...
     elif text == "附近廁所":
         if uid not in user_locations:
