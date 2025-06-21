@@ -70,7 +70,8 @@ def query_local_toilets(lat, lon):
     toilets = []
     try:
         if not os.path.exists(TOILETS_FILE_PATH):
-            raise FileNotFoundError(f"{TOILETS_FILE_PATH} 不存在")
+            logging.error(f"{TOILETS_FILE_PATH} 不存在，請確認檔案是否存在於指定路徑")
+            return []
         
         with open(TOILETS_FILE_PATH, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
@@ -227,7 +228,7 @@ def geocode_address(address, user_name):
 def add_to_toilets_file(name, address, lat, lon):
     try:
         if not os.path.exists(TOILETS_FILE_PATH):
-            logging.error(f"{TOILETS_FILE_PATH} 不存在")
+            logging.error(f"{TOILETS_FILE_PATH} 不存在，請確認檔案是否存在於指定路徑")
             return
 
         with open(TOILETS_FILE_PATH, "r", encoding="utf-8", errors='ignore') as f:
