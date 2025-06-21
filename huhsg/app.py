@@ -135,7 +135,6 @@ def query_overpass_toilets(lat, lon, radius=300):
         })
     return sorted(toilets, key=lambda x: x["distance"])
 
-# geocode 地址轉換為經緯度（使用 OpenStreetMap Nominatim）
 def geocode_address(address):
     try:
         # 確保地址格式正確並進行 URL 編碼
@@ -167,13 +166,16 @@ def geocode_address(address):
                 return city, lat, lon
             else:
                 logging.error(f"無法解析地址: {formatted_address}")
+                # 返回 None 而不停止其他流程
                 return None, None, None
         else:
             logging.error(f"API 請求失敗，狀態碼：{response.status_code}")
             logging.error(f"回應內容：{response.text}")
+            # 返回 None 而不停止其他流程
             return None, None, None
     except Exception as e:
         logging.error(f"解析地址出錯：{e}")
+        # 返回 None 而不停止其他流程
         return None, None, None
 
 # 建立 Flex Message（使用 Google Map）
