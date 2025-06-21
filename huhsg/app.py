@@ -25,9 +25,9 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
-# 絕對路徑設定
-TOILETS_FILE_PATH = 'D:/school/huhsg/toilets.txt'  # 更改檔案路徑為實際路徑
-FAVORITES_FILE_PATH = 'D:/school/huhsg/favorites.txt'  # 新增 favorites.txt 檔案路徑
+# 相對路徑設定
+TOILETS_FILE_PATH = os.path.join(os.getcwd(), 'toilets.txt')  # 使用相對路徑
+FAVORITES_FILE_PATH = os.path.join(os.getcwd(), 'favorites.txt')  # 使用相對路徑
 
 # 建立 favorites.txt 如不存在
 def ensure_favorites_file():
